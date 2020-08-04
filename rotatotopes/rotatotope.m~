@@ -1,0 +1,174 @@
+classdef rotatotope
+    %ROTATOTOPE construction and manipulation
+    %   Rotatotopes (Definition 4) form the backbone of ARMTD. In short,
+    %   they are used to represent a zonotope rotated by sets of rotation
+    %   matrices. ARMTD uses rotatotopes to overapproximate the forward
+    %   occupany map of a robot link for a set of possible configurations.
+    
+    properties
+        rotation_axes = []; % column array of vectors representing 3D axes of rotation in body-fixed frame
+        Jit = {}; % cell of zonotopes representing JRS of i-th joint at time t
+        Li; % zonotope representing i-th link (or joint) volume
+        
+        n_reduced_generators = 15; % maximum number of rotatotope generators to keep after reduction
+        
+        trig_dim = [1, 2]; % cos(q_i) and sin(q_i) dimensions in each Jit
+        k_dim = [3]; % traj. param dimensions in each Jit
+        
+        Vit; % output rotatotope center and generators
+        
+        % the following are used for bookkeeping: need to remember which 
+        % rotatotopes generators were created by multiplication with 
+        % k-sliceable generators (k_idx), matrices created from Jit centers, 
+        % and the center of Li, as these determine which
+        % rotatotope generators are "fully-k^a-sliceable" (eqn. 19) which
+        % we keep track of with fully_slc
+        
+        % keep track of which generators are sliceable by which parameters,
+        % and which are fully sliceable:
+        k_slc = []; 
+        fully_slc = [];
+    end
+    
+    methods
+        function obj = rotatotope(varargin)
+            %ROTATOTOPE Construct an instance of this class
+            %   obj = rotatotopes(rotation_axes, Jit, Li) where rotation
+            %   axes is an array of column vectors specifying 3D axes of
+            %   rotation (in body-fixed frame), Jit is a cell of zonotopes
+            %   specifying the JRS of predecessor joints for the current
+            %   time step, and Li is a zonotope representing link (or
+            %   joint) volume to be rotated.
+            if nargin == 3
+                % parse the input arguments:
+                obj.rotation_axes = varargin{1};
+                obj.Jit = varargin{2};
+                obj.Li = varargin{3};
+                if length(obj.Jit) ~= size(obj.rotation_axes, 2)
+                    error('Specify as many JRS zonotopes as rotation axes');
+                end
+                if ~isa(obj.Li, 'zonotope')
+                   error('Specify the link volume Li as a zonotope'); 
+                end
+            else
+                error('rotatotope requires 3 arguments');
+            end
+            
+            % allocate outputs
+            Vit_tmp = obj.Li.Z;
+            n_vec = size(Vit_tmp, 2);
+            fully_slc_tmp = zeros(1, n_vec);
+            fully_slc_tmp(1) = 1;
+            k_slc_tmp = [];
+            
+            % apply the rotations specified in the JRS:
+            for i = length(obj.Jit):-1:1
+                fully_slc_new = [];
+                k_slc_new = [];
+                Vit_new = [];
+                
+                % multiply link volume by rotation matrix created from
+                % center of JRS; no indeterminate is added (see eqn. (13))
+                M = obj.make_matrix(obj.rotation_axes(:, i), obj.Jit{i}.Z(obj.trig_dim, 1), true);
+                Vit_new = M*Vit_tmp;
+                fully_slc_new = [fully_slc_new, fully_slc_tmp];
+                k_slc_new = [k_slc_new, [zeros(1, n_vec); k_slc_tmp]];
+                
+                % multiply link volume by rotation matrix created from
+                % generators of JRS; indeterminate is added (see eqn. (13)).
+                % however, if generator is k-sliceable, then we can still
+                % evaluate indeterminate later on.
+                for j = 2:size(obj.Jit{i}.Z, 2)
+                    M = obj.make_matrix(obj.rotation_axes(:, i), obj.Jit{i}.Z(obj.trig_dim, j), false);
+                    Vit_new(:, (end+1):(end+size(Vit_tmp, 2))) = M*Vit_tmp;
+                    if obj.Jit{i}.Z(obj.k_dim, i) ~= 0
+                        fully_slc_new = [fully_slc_new, fully_slc_tmp];
+                        k_slc_new = [k_slc_new, [ones(1, n_vec); k_slc_tmp]];
+                    else
+                        fully_slc_new = [fully_slc_new, zeros(1, n_vec)];
+                        k_slc_new = [k_slc_new, [zeros(1, n_vec); k_slc_tmp]];
+                    end
+                end
+                
+                % reduce nubmer of generators
+                [Vit_tmp, fully_slc_tmp, k_slc_tmp] = obj.reduce(Vit_new, fully_slc_new, k_slc_new);
+                n_vec = size(Vit_tmp, 2);
+            end 
+            
+            % store rotatotope
+            obj.Vit = Vit_tmp;
+            obj.fully_slc = fully_slc_tmp;
+            obj.k_slc = k_slc_tmp;
+        end
+        
+        function M = make_matrix(obj, rotation_axis, x, is_center)
+            cq = x(1); % cosine dimension
+            sq = x(2); % sine dimension
+            if (length(rotation_axis) ~= 3)
+                error('Specify a 3D rotation axis');
+            end
+            
+            % use axis-angle formula to get rotation matrix:
+            % https://en.wikipedia.org/wiki/Rodrigues%27_rotation_formula
+            e = rotation_axis./norm(rotation_axis);
+            K = [0 -e(3) e(2);...
+                 e(3) 0 -e(1);...
+                 -e(2) e(1) 0];
+            if is_center
+                M = eye(3) + sq*K + (1 - cq)*K^2;
+            else
+                M = sq*K + -cq*K^2;
+            end
+        end
+        
+        function [Vit_tmp, fully_slc_tmp, k_slc_tmp] = reduce(obj, Vit_new, fully_slc_new, k_slc_new)
+            % look at Appendix D.D for more details
+            % based off of the "reduceGirard.m" function included in CORA
+            
+            % only reduce if number of gens is greated than desired
+            if size(Vit_new, 2)-1 > obj.n_reduced_generators
+                c = Vit_new(:, 1);
+                G = Vit_new(:, 2:end);
+
+                %compute metric of generators
+%               h = vnorm(G,1,1)-vnorm(G,1,inf);
+                h = vnorm(G, 1, 2);
+                
+                % want to add a fix here that prioritizes keeping
+                % k-sliceable generators, and re-reducing previously reduced
+                % generators (since these are already an axis-aligned box)
+                
+                % sort generators according to metric
+                [~, indices] = sort(h);
+
+                % pick generators that are reduced
+                G_reduced = G(:, indices(1:obj.n_reduced_generators));
+                
+                % unreduced generators
+                G_unreduced = G(:, indices((obj.n_reduced_generators+1):end));
+
+                % box generators to reduce
+                d = sum(abs(G_reduced),2);
+                
+                % build box Gbox from interval hull vector d
+                G_box = diag(d);
+                
+                % reconstruct new rotatotope
+                Vit_tmp = [c, G_unreduced, G_reduced];
+                fully_slc_tmp = [fully_slc_tmp(1, 1), fully_slc_tmp(1, indices((obj.n_reduced_generators+1):end), zeros(1, size(G_box, 2))];
+                k_slc_tmp = [k_slc_tmp(:, 1), k_slc_tmp(:, indices((obj.n_reduced_generators+1):end)
+                
+            else
+                
+            end
+
+        end
+        
+        function outputArg = method1(obj,inputArg)
+            %METHOD1 Summary of this method goes here
+            %   Detailed explanation goes here
+            outputArg = obj.Property1 + inputArg;
+        end
+    end
+end
+
