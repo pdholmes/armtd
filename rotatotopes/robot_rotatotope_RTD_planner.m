@@ -194,8 +194,8 @@ classdef robot_rotatotope_RTD_planner < robot_arm_generic_planner
 %             initial_guess = (lb + ub)/2;
             initial_guess = rand_range(lb, ub);
            
-%             options = optimoptions('fmincon','SpecifyConstraintGradient',true);
-            options = optimoptions('fmincon','SpecifyConstraintGradient',true, 'CheckGradients', true);
+            options = optimoptions('fmincon','SpecifyConstraintGradient',true);
+%             options = optimoptions('fmincon','SpecifyConstraintGradient',true, 'CheckGradients', true);
             [k_opt, ~, exitflag, ~] = fmincon(cost_func, initial_guess, [], [], [], [], lb, ub, constraint_func, options) ;
             
             trajopt_failed = exitflag <= 0 ;
