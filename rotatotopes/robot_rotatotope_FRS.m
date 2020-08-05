@@ -288,7 +288,6 @@ classdef robot_rotatotope_FRS
         
         function obj = generate_self_intersection_constraints(obj)
            for i = 1:length(obj.link_self_intersection) % for each pair of links that could intersect
-               % get zonotope representation of obstacle:
                for j = 1:length(obj.link_rotatotopes{1})
                    % get rotatotope center and generators:
                    Vit_1 = obj.link_rotatotopes{obj.link_self_intersection{i}(1)}{j}.Vit;

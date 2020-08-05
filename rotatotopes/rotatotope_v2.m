@@ -68,6 +68,9 @@ classdef rotatotope_v2
             
             % initialize outputs
             Vit_tmp = obj.Li.Z;
+            if obj.dimension == 2
+                Vit_tmp = [Vit_tmp; zeros(1, size(Vit_tmp, 2))];
+            end
             n_vec = size(Vit_tmp, 2);
             fully_slc_tmp = zeros(1, n_vec);
             fully_slc_tmp(1) = 1;
