@@ -13,7 +13,7 @@ classdef rotatotope_v2
         n_generators = 15; % maximum number of rotatotope generators to keep after reduction
         
         trig_dim = [1, 2]; % cos(q_i) and sin(q_i) dimensions in each Jit
-        k_dim = [3]; % traj. param dimensions in each Jit
+        k_dim = [4]; % traj. param dimensions in each Jit, shannon changed from 3
         
         Vit; % output rotatotope center and generators
         
@@ -121,9 +121,11 @@ classdef rotatotope_v2
             end 
             
             % check if 2D is desired; project if so
-            if obj.dimension == 2
-               Vit_tmp(3, :) = []; 
-            end
+            % SHANNON needed to comment this out because we're keeping the
+            % row of zeros in Vit
+%             if obj.dimension == 2
+%                Vit_tmp(3, :) = []; 
+%             end
             
             % store rotatotope
             obj.Vit = Vit_tmp;
@@ -311,6 +313,10 @@ classdef rotatotope_v2
             fully_slc_only = true;
             
             Z = obj.slice(k, fully_slc_only);
+            %Shannon added: back down to 2!!
+            if obj.dimension == 2
+                Z = Z(1:2, :);
+            end
             Z = zonotope([Z, buffer/2*eye(obj.dimension)]);
             switch obj.dimension
                 case 2
