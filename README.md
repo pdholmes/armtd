@@ -6,7 +6,7 @@ The file `fetch_example_new_code` is the same as `arm_example_11_rotatotope_RTD_
 I updated the JRS computation (`precompute_joint_reachable_sets`), the rotatotope class (see `rotatotope_v2`), the FRS classes (now a more general class called `robot_rotatotope_FRS`) and the planner (more general, see `robot_rotatotope_RTD_planner`).
 
 There are still some updates I want to make (like multiple k's per joint) that will come in the future.
-I'm confident everything works the same as the arm_planning in 3D, but feedback about the 2D case would be appreciated or any bugs you find would be appreciated!
+I'm confident everything works the same as the [arm_planning](https://github.com/ramvasudevan/arm_planning) repo in 3D, but feedback about the 2D case or any bugs you find would be appreciated!
 Check also the scripts `test_fetch_rotatotope_FRS_obstacle` and `test_fetch_rotatotope_FRS_self_intersection` to see some self-contained examples checking that the constraints are reasonable.
 
 Also, if there're portions that need more explanation let me know!
