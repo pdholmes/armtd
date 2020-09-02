@@ -11,6 +11,7 @@
 % Updated: 18 September 2019 - using rotatotope RTD planner now
 % Updated: Continually between 18 September 2019 and 18 March 2020
 % Updated: 4 August 2020 - update to new code using `robot_rotatotope_RTD_planner`
+% Updated: 2 September 2020 - update with "pre-slicing", new parameter code
 
 clear ; clc ; figure(1); clf; view(3); grid on;
 
@@ -42,7 +43,8 @@ FRS_options.combs = generate_combinations_upto(200);
 FRS_options.maxcombs = 200;
 % P = robot_arm_rotatotope_RTD_planner_3D_fetch(FRS_options, 'verbose', verbosity, 't_plan', t_plan, 'time_discretization', time_discretization, 'use_cuda_flag', use_cuda_flag) ;
 % new planner!!!
-P = robot_rotatotope_RTD_planner('fetch_rotatotope_FRS', FRS_options, 'verbose', verbosity, 't_plan', t_plan, 'time_discretization', time_discretization, 'use_cuda_flag', use_cuda_flag) ;
+% P = robot_rotatotope_RTD_planner('fetch_rotatotope_FRS', FRS_options, 'verbose', verbosity, 't_plan', t_plan, 'time_discretization', time_discretization, 'use_cuda_flag', use_cuda_flag) ;
+P = test_preslice_rotatotope_RTD_planner(FRS_options, 'verbose', verbosity, 't_plan', t_plan, 'time_discretization', time_discretization, 'use_cuda_flag', use_cuda_flag) ;
 
 % set up world using arm
 I = A.get_agent_info ;

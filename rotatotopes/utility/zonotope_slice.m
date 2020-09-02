@@ -5,6 +5,17 @@ function [newzono] = zonotope_slice(zono, slice_dim, slice_pt)
 % dimensions...
 % for now, only works if there's one generator in each slice_dim
 
+if isempty(slice_dim) && isempty(slice_pt)
+    newzono = zono;
+    return;
+elseif isempty(slice_dim) || isempty(slice_pt)
+    warning('either slice_dim or slice_value is nonempty... leave both empty if not slicing. returning original zono');
+    newzono = zono;
+    return;
+end
+
+
+
 if size(slice_pt, 2) ~= 1
     error('Slice point should be a column vector');
 end
