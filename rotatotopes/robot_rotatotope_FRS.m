@@ -36,7 +36,7 @@ classdef robot_rotatotope_FRS
         % joint velocity:
         % 
         pre_slice_dim = {}; % for each JRS, dimensions to pre-slice
-        pre_slice_values = {}; % for each JRS, values to pre-slice
+        pre_slice_values = {}; % for each JRS, values/intervals to pre-slice
         
         % store information about trajectory parameter space:
         k_dim = {}; % for each JRS, dimensions of trajectory parameters

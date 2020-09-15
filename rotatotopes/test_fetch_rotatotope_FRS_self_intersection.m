@@ -4,6 +4,7 @@ figure(1); clf; hold on; axis equal;
 
 %%% change this to try out pre-slicing!!
 test_pre_slice = true;
+pre_slice_interval = true;
 
 % set FRS_options
 FRS_options = struct();
@@ -15,12 +16,24 @@ FRS_options.origin_shift = zeros(3, 1);
 q_0 = [0; 0; 0; pi/4; 0; pi/4];
 q_dot_0 = [0; 0; 0; pi/2; 0; pi/4 + 0.1];
 
-R = robot_arm_FRS_rotatotope_fetch(q_0, q_dot_0, FRS_options);
-R = R.generate_self_intersection_constraints();
+% R = robot_arm_FRS_rotatotope_fetch(q_0, q_dot_0, FRS_options);
+% R = R.generate_self_intersection_constraints();
 
 if test_pre_slice
     pre_slice_dim = {[4;3]; [4;3]; [4;3]; [4]; [4;3]; [4]};  % for each JRS, dimensions to pre-slice
-    pre_slice_values = {[q_dot_0(1); 0]; [q_dot_0(2); 0]; [q_dot_0(3); 0]; [q_dot_0(4)]; [q_dot_0(5); 0]; [q_dot_0(6)]}; % for each JRS, values to pre-slice
+    if pre_slice_interval
+        % just try using a +- epsilon on acceleration for joints 2-5...
+        % interval format is [lower_bound, upper_bound]
+        epsilon = 0.1;
+        pre_slice_values = {[q_dot_0(1), q_dot_0(1); 0 - epsilon, 0 + epsilon];...
+            [q_dot_0(2), q_dot_0(2); 0 - epsilon, 0 + epsilon];...
+            [q_dot_0(3), q_dot_0(3); 0 - epsilon, 0 + epsilon];...
+            [q_dot_0(4)];...
+            [q_dot_0(5), q_dot_0(5); 0 - epsilon, 0 + epsilon];...
+            [q_dot_0(6)]}; % for each JRS, intervals to pre-slice over
+    else
+        pre_slice_values = {[q_dot_0(1); 0]; [q_dot_0(2); 0]; [q_dot_0(3); 0]; [q_dot_0(4)]; [q_dot_0(5); 0]; [q_dot_0(6)]}; % for each JRS, values to pre-slice
+    end
     k_dim = {[]; []; []; [3]; []; [3]}; % for each JRS, dimensions of trajectory parameters
     k_names = {{}; {}; {}; {'ka4'}; {}; {'ka6'}}; % store list of all parameters 
 
