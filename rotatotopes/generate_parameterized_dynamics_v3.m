@@ -26,7 +26,11 @@ x = [cqi; sqi; dcqi; dsqi; kai; kvi; t];
 q_i_dot = kvi + kai*t;
 % dcqi = -sqi*dqi;
 % dsqi = cqi*dqi;
+d_cqi = -sqi*q_i_dot;
+d_sqi = cqi*q_i_dot;
 % ddqi = kai;
+% ddcqi = -cqi*q_i_dot^2 - sqi*kai;
+% ddsqi = sqi*q_i_dot^2 + cqi*kai;
 ddcqi = -dsqi*q_i_dot - sqi*kai;
 ddsqi = dcqi*q_i_dot + cqi*kai;
 dkai = 0;
@@ -34,7 +38,8 @@ dkvi = 0;
 dt = 1;
 
 % dx = [dcqi; dsqi; ddqi; dkai; dkvi; dt];
-dx = [dcqi; dsqi; ddcqi; ddsqi; dkai; dkvi; dt];
+% dx = [dcqi; dsqi; ddcqi; ddsqi; dkai; dkvi; dt];
+dx = [d_cqi; d_sqi; ddcqi; ddsqi; dkai; dkvi; dt];
 dyn_zero_to_t_plan = matlabFunction(dx, 'File', 'rotatotopes/dynamics/dyn_zero_to_t_plan', 'vars', {tdummy, x, udummy});
 
 % now we specify braking dynamics on t \in [t_plan, t_total]
@@ -45,12 +50,17 @@ q_i_dot = q_i_dot_pk + braking_acceleration*(t - t_plan);
 
 % dcqi = -sqi*dqi;
 % dsqi = cqi*dqi;
+d_cqi = -sqi*q_i_dot;
+d_sqi = cqi*q_i_dot;
 % ddqi = braking_acceleration;
+% ddcqi = -cqi*q_i_dot^2 - sqi*braking_acceleration;
+% ddsqi = sqi*q_i_dot^2 + cqi*braking_acceleration;
 ddcqi = -dsqi*q_i_dot - sqi*braking_acceleration;
 ddsqi = dcqi*q_i_dot + cqi*braking_acceleration;
 
 % dx = [dcqi; dsqi; ddqi; dkai; dkvi; dt];
-dx = [dcqi; dsqi; ddcqi; ddsqi; dkai; dkvi; dt];
+% dx = [dcqi; dsqi; ddcqi; ddsqi; dkai; dkvi; dt];
+dx = [d_cqi; d_sqi; ddcqi; ddsqi; dkai; dkvi; dt];
 dyn_t_plan_to_t_total = matlabFunction(dx, 'File', 'rotatotopes/dynamics/dyn_t_plan_to_t_total', 'vars', {tdummy, x, udummy});
 
 end

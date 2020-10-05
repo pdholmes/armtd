@@ -20,8 +20,8 @@ classdef velocity_rotatotope
         n_generators = 15; % maximum number of rotatotope generators to keep after reduction
         
         trig_dim = [1; 2]; % cos(q_i) and sin(q_i) dimensions in each Jit
-        vel_dim = [3]; % q_i_dot dimension
-        % vel_dim = [3;4];
+        % vel_dim = [3]; % q_i_dot dimension
+        vel_dim = [3;4];
         
         k_dim = {}; % for each JRS, dimensions of trajectory parameters
         k_names = {}; % names of trajectory parameters for each JRS
@@ -263,9 +263,9 @@ classdef velocity_rotatotope
             
             cq = x(1); % cosine dimension
             sq = x(2); % sine dimension
-            dq = x(3); % q_i_dot dimension
-            % dcq = x(3);
-            % dsq = x(4);
+            % dq = x(3); % q_i_dot dimension
+            dcq = x(3);
+            dsq = x(4);
             if (length(rotation_axis) ~= 3)
                 error('Specify a 3D rotation axis. If in 2D, use [0;0;1]');
             end
@@ -276,8 +276,8 @@ classdef velocity_rotatotope
             K = [0 -e(3) e(2);...
                  e(3) 0 -e(1);...
                  -e(2) e(1) 0];
-            M = dq*(cq*K + sq*K^2);
-            % M = dsq*K - dcq*K^2;
+            % M = dq*(cq*K + sq*K^2);
+            M = dsq*K - dcq*K^2;
         end
         
         function [Vit_tmp, fully_slc_tmp, k_slc_tmp] = reduce(obj, Vit_new, fully_slc_new, k_slc_new)

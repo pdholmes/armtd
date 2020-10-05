@@ -48,6 +48,7 @@ classdef robot_rotatotope_FRS_v2
         delta_k = [];
         
         link_rotatotopes = {}; % store rotatotopes representing FRS of each link
+        joint_position_rotatotopes = {};
         joint_velocity_rotatotopes = {};
         
         FRS_options = {}; % additional options for FRS creation
@@ -118,6 +119,8 @@ classdef robot_rotatotope_FRS_v2
                 A = eye(size(JRS_load{i}{1}{1}.Z, 1));
                 A(1, 1) = cos(obj.q_0(i)); A(1, 2) = -sin(obj.q_0(i));
                 A(2, 1) = sin(obj.q_0(i)); A(2, 2) = cos(obj.q_0(i));
+                A(3, 3) = cos(obj.q_0(i)); A(3, 4) = -sin(obj.q_0(i));
+                A(4, 3) = sin(obj.q_0(i)); A(4, 4) = cos(obj.q_0(i));
                 for j = 1:length(JRS_load{i})
                     JRS{j}{i} = A*zonotope_slice(JRS_load{i}{j}{1}, obj.pre_slice_dim{i}, obj.pre_slice_values{i});
                 end
@@ -194,8 +197,8 @@ classdef robot_rotatotope_FRS_v2
                 end
             end
             
-            % link predecessor joint rotatotopes
-            for i = 1:obj.n_links - 1
+            % link joint position rotatotopes
+            for i = 1:obj.n_links
                 for j = 1:obj.n_time_steps
                     link_joint_rotatotopes{i}{j} = rotatotope_v3(obj.rotation_axes(:, obj.link_predecessor_joints{i}), JRS{j}(obj.link_predecessor_joints{i}), obj.joint_zonotopes{i}, ...
                         obj.k_dim(obj.link_predecessor_joints{i}), obj.k_names(obj.link_predecessor_joints{i}));
@@ -205,6 +208,7 @@ classdef robot_rotatotope_FRS_v2
             % stack:
             % (lines 12 - 14 of Alg. 2)
             obj.joint_velocity_rotatotopes = joint_velocity_rotatotopes;
+            obj.joint_position_rotatotopes = link_joint_rotatotopes;
             obj.link_rotatotopes = link_volume_rotatotopes;
             for i = 1:obj.n_links
                 for j = 1:obj.n_time_steps
@@ -218,7 +222,17 @@ classdef robot_rotatotope_FRS_v2
                         obj.joint_velocity_rotatotopes{i}{j} = obj.joint_velocity_rotatotopes{i}{j}.stack(joint_velocity_rotatotopes{k}{j});
                     end 
 
-                    % stack positions...
+                    % stack joint positions...
+                    % stack on base
+                    for k = 1:obj.n_base
+                       obj.joint_position_rotatotopes{i}{j} = obj.joint_position_rotatotopes{i}{j}.stack(base_joint_rotatotopes{k}{j}); 
+                    end
+                    % stack on prev. links
+                    for k = 1:i-1
+                       obj.joint_position_rotatotopes{i}{j} = obj.joint_position_rotatotopes{i}{j}.stack(link_joint_rotatotopes{k}{j});
+                    end
+
+                    % stack link positions...
                     % stack on base
                     for k = 1:obj.n_base
                        obj.link_rotatotopes{i}{j} = obj.link_rotatotopes{i}{j}.stack(base_joint_rotatotopes{k}{j}); 
