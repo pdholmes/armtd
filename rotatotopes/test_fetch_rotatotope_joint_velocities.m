@@ -74,8 +74,8 @@ axis equal;
 % test_k = [-pi/3; pi/25; -pi/25; pi/25; pi/25; pi/6];
 % test_k = [-pi/3; pi/25; -pi/25; pi/25; pi/25; pi/24];
 % test_k = [pi/3; pi/25; -pi/25; pi/25; pi/25; pi/24];
-test_k = [pi/3; -pi/24*ones(5, 1)];
-figure(7); clf; hold on;
+test_k = [-pi/3; pi/24*ones(5, 1)];
+figure(9); clf; hold on;
 % figure(2); hold on;
 for i = 10:10:100
     R2.joint_velocity_rotatotopes{3}{i}.plot();

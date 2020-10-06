@@ -469,7 +469,16 @@ classdef velocity_rotatotope
                 p = [];
             end
             
-            Z = zonotope(obj.Vit);
+            % check for indices where the coefficient can only be in [0, 1]
+%             after slicing...
+            c_tmp = obj.Vit(:, 1);
+            G_tmp = obj.Vit(:, 2:end);
+            idxs = (obj.fully_slc == 1) & ~all(obj.k_slc == 0) & all(mod(obj.k_slc, 2) == 0);
+            c_tmp = c_tmp + 0.5*sum(G_tmp(:, idxs), 2);
+            G_tmp(:, idxs) = 0.5*G_tmp(:, idxs);
+            Z = zonotope([c_tmp, G_tmp]);
+
+%             Z = zonotope(obj.Vit);
 
             switch obj.dimension
                 case 2
