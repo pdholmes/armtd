@@ -1,4 +1,4 @@
-clear all; clc;
+clear all;
 
 figure(1); clf; hold on; axis equal;
 
@@ -16,7 +16,7 @@ FRS_options.origin_shift = zeros(3, 1);
 % q_0 = [0; 0; 0; pi/2 + 5*pi/48; 0; pi/2 + 5*pi/48];
 q_0 = [-pi/2;0;0;0;0;0];
 % q_dot_0 = [pi;pi/8;-pi/7;pi/9;pi/10;pi];
-q_dot_0 = [pi; 0; 0; 0; 0; pi/2];
+q_dot_0 = [pi; 0; 0; 0; 0; 0];
 k = [0;0;0;0;0;0];
 
 % R = robot_arm_FRS_rotatotope_fetch(q_0, q_dot_0, FRS_options);
@@ -47,18 +47,18 @@ if test_pre_slice
         'k_names', k_names, ...
         'JRS_path', 'rotatotopes/joint_reachable_sets_v2/');
 else
-    % pre_slice_dim = {[5]; [5]; [5]; [5]; [5]; [5]};  % for each JRS, dimensions to pre-slice
-    pre_slice_dim = {[6]; [6]; [6]; [6]; [6]; [6]};  % for each JRS, dimensions to pre-slice
+    pre_slice_dim = {[5]; [5]; [5]; [5]; [5]; [5]};  % for each JRS, dimensions to pre-slice
+%     pre_slice_dim = {[6]; [6]; [6]; [6]; [6]; [6]};  % for each JRS, dimensions to pre-slice
     pre_slice_values = {q_dot_0(1); q_dot_0(2); q_dot_0(3); q_dot_0(4); q_dot_0(5); q_dot_0(6)};
-    % k_dim = {[4]; [4]; [4]; [4]; [4]; [4]}; % for each JRS, dimensions of trajectory parameters
-    k_dim = {[5]; [5]; [5]; [5]; [5]; [5]}; % for each JRS, dimensions of trajectory parameters
+    k_dim = {[4]; [4]; [4]; [4]; [4]; [4]}; % for each JRS, dimensions of trajectory parameters
+%     k_dim = {[5]; [5]; [5]; [5]; [5]; [5]}; % for each JRS, dimensions of trajectory parameters
     k_names = {{'ka1'}; {'ka2'}; {'ka3'}; {'ka4'}; {'ka5'}; {'ka6'}}; % store list of all parameters 
     R2 = three_link_rotatotope_FRS(q_0, q_dot_0, FRS_options, ...
     'pre_slice_dim', pre_slice_dim, ...
     'pre_slice_values', pre_slice_values, ...
     'k_dim', k_dim, ...
     'k_names', k_names, ...
-    'JRS_path', 'rotatotopes/joint_reachable_sets_v3/');
+    'JRS_path', 'rotatotopes/joint_reachable_sets_v2/');
 end
 
 
@@ -71,8 +71,11 @@ axis equal;
 % woo... so let's actually try to compute the velocity of the last 
 % joint for some value of k, then see if that lies within the sliced rotatotope at that time
 
-test_k = [-pi/3; pi/25; -pi/25; pi/25; pi/25; pi/6];
-figure(5); clf; hold on;
+% test_k = [-pi/3; pi/25; -pi/25; pi/25; pi/25; pi/6];
+% test_k = [-pi/3; pi/25; -pi/25; pi/25; pi/25; pi/24];
+% test_k = [pi/3; pi/25; -pi/25; pi/25; pi/25; pi/24];
+test_k = [-pi/3; -pi/24*ones(5, 1)];
+figure(7); clf; hold on;
 % figure(2); hold on;
 for i = 10:10:100
     R2.joint_velocity_rotatotopes{3}{i}.plot();
@@ -98,17 +101,17 @@ for i = 10:10:100
     end
 
     % A = robot_arm_3D_fetch();
-    A = arm_3D_3link;
-    p1 = A.get_end_effector_location(q1);
-    p2 = A.get_end_effector_location(q2);
+%     A = arm_3D_3link;
+%     p1 = A.get_end_effector_location(q1);
+%     p2 = A.get_end_effector_location(q2);
     rotation_axes = [3, 2, 1, 2, 1, 2];
     for j = 1:6
         O1{j} = make_orientation(q1(j), rotation_axes(j));
         O2{j} = make_orientation(q2(j), rotation_axes(j));
     end
 
-    p1_1 = O1{1}*O1{2}*[1;0;0] + O1{1}*O1{2}*O1{3}*O1{4}*[1;0;0] + O1{1}*O1{2}*O1{3}*O1{4}*O1{5}*O1{6}*[1;0;0];
-    p2_1 = O2{1}*O2{2}*[1;0;0] + O2{1}*O2{2}*O2{3}*O2{4}*[1;0;0] + O2{1}*O2{2}*O2{3}*O2{4}*O2{5}*O2{6}*[1;0;0]; 
+    p1 = O1{1}*O1{2}*[1;0;0] + O1{1}*O1{2}*O1{3}*O1{4}*[1;0;0] + O1{1}*O1{2}*O1{3}*O1{4}*O1{5}*O1{6}*[1;0;0];
+    p2 = O2{1}*O2{2}*[1;0;0] + O2{1}*O2{2}*O2{3}*O2{4}*[1;0;0] + O2{1}*O2{2}*O2{3}*O2{4}*O2{5}*O2{6}*[1;0;0]; 
 
     estimated_velocity = (p2-p1)./(0.001);
 

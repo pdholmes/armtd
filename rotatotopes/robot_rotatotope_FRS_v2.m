@@ -119,8 +119,8 @@ classdef robot_rotatotope_FRS_v2
                 A = eye(size(JRS_load{i}{1}{1}.Z, 1));
                 A(1, 1) = cos(obj.q_0(i)); A(1, 2) = -sin(obj.q_0(i));
                 A(2, 1) = sin(obj.q_0(i)); A(2, 2) = cos(obj.q_0(i));
-                A(3, 3) = cos(obj.q_0(i)); A(3, 4) = -sin(obj.q_0(i));
-                A(4, 3) = sin(obj.q_0(i)); A(4, 4) = cos(obj.q_0(i));
+                % A(3, 3) = cos(obj.q_0(i)); A(3, 4) = -sin(obj.q_0(i));
+                % A(4, 3) = sin(obj.q_0(i)); A(4, 4) = cos(obj.q_0(i));
                 for j = 1:length(JRS_load{i})
                     JRS{j}{i} = A*zonotope_slice(JRS_load{i}{j}{1}, obj.pre_slice_dim{i}, obj.pre_slice_values{i});
                 end

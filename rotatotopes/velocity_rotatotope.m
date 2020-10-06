@@ -21,7 +21,7 @@ classdef velocity_rotatotope
         
         trig_dim = [1; 2]; % cos(q_i) and sin(q_i) dimensions in each Jit
         % vel_dim = [3]; % q_i_dot dimension
-        vel_dim = [3;4];
+        vel_dim = [3];
         
         k_dim = {}; % for each JRS, dimensions of trajectory parameters
         k_names = {}; % names of trajectory parameters for each JRS
@@ -128,7 +128,18 @@ classdef velocity_rotatotope
             for k = length(obj.Jit):-1:1
             
                 % initialize outputs
-                Vit_tmp = obj.Li.Z;
+                % Vit_tmp = obj.Li.Z;
+                % if obj.dimension == 2
+                %     Vit_tmp = [Vit_tmp; zeros(1, size(Vit_tmp, 2))];
+                % end
+                % n_k = length(obj.k_list);
+                % n_vec = size(Vit_tmp, 2);
+                % fully_slc_tmp = zeros(1, n_vec);
+                % fully_slc_tmp(1) = 1;
+                % k_slc_tmp = zeros(n_k, n_vec);
+
+                % HACK: assume Li is a point.
+                Vit_tmp = obj.Jit{k}.Z(obj.vel_dim, :).*obj.Li.Z(:, 1);
                 if obj.dimension == 2
                     Vit_tmp = [Vit_tmp; zeros(1, size(Vit_tmp, 2))];
                 end
@@ -137,6 +148,22 @@ classdef velocity_rotatotope
                 fully_slc_tmp = zeros(1, n_vec);
                 fully_slc_tmp(1) = 1;
                 k_slc_tmp = zeros(n_k, n_vec);
+                G = obj.Jit{k}.Z;
+                for j = 2:n_vec
+                    if any(G(obj.k_dim{k}, j)) ~= 0
+                        % if generator is k-sliceable, then we can still
+                        % evaluate indeterminate later on.
+                        % add 1 to this row of k_slc, implying an
+                        % additional indeterminate
+                        k_row = find(G(obj.k_dim{k}, j) ~= 0);
+                        k_name = obj.k_names{k}{k_row};
+                        k_idx = find(strcmp(k_name, obj.k_list));
+                        k_slc_tmp(k_idx, j) = k_slc_tmp(k_idx, j) + 1;
+                        fully_slc_tmp(1, j) = 1;
+                    end
+                end
+
+
                 
                 % apply the rotations specified in the JRS:
                 for i = length(obj.Jit):-1:1
@@ -264,8 +291,8 @@ classdef velocity_rotatotope
             cq = x(1); % cosine dimension
             sq = x(2); % sine dimension
             % dq = x(3); % q_i_dot dimension
-            dcq = x(3);
-            dsq = x(4);
+            % dcq = x(3);
+            % dsq = x(4);
             if (length(rotation_axis) ~= 3)
                 error('Specify a 3D rotation axis. If in 2D, use [0;0;1]');
             end
@@ -276,8 +303,9 @@ classdef velocity_rotatotope
             K = [0 -e(3) e(2);...
                  e(3) 0 -e(1);...
                  -e(2) e(1) 0];
-            % M = dq*(cq*K + sq*K^2);
-            M = dsq*K - dcq*K^2;
+%             M = dq*(cq*K + sq*K^2);
+            M = (cq*K + sq*K^2);
+            % M = dsq*K - dcq*K^2;
         end
         
         function [Vit_tmp, fully_slc_tmp, k_slc_tmp] = reduce(obj, Vit_new, fully_slc_new, k_slc_new)
