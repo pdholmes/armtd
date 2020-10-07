@@ -1,9 +1,16 @@
-classdef rotatotope_v3
-    %ROTATOTOPE construction and manipulation
+classdef velocity_rotatotope
+    %VELOCITY_ROTATOTOPE construction and manipulation
     %   Rotatotopes (Definition 4) form the backbone of ARMTD. In short,
     %   they are used to represent a zonotope rotated by sets of rotation
     %   matrices. ARMTD uses rotatotopes to overapproximate the forward
     %   occupany map of a robot link for a set of possible configurations.
+    %
+    %   update 20201003: testing "velocity rotatotopes", i.e.
+    %   rotatotopes that overapproximate workspace velocity of a
+    %   body-fixed zonotope.
+    %   much remains the same when computing these... but there will
+    %   more multiplications and each predecessor's joint velocity
+    %   will be taken into account.
     
     properties
         rotation_axes = []; % column array of vectors representing 3D axes of rotation in body-fixed frame
@@ -12,7 +19,9 @@ classdef rotatotope_v3
         
         n_generators = 15; % maximum number of rotatotope generators to keep after reduction
         
-        trig_dim = [1, 2]; % cos(q_i) and sin(q_i) dimensions in each Jit
+        trig_dim = [1; 2]; % cos(q_i) and sin(q_i) dimensions in each Jit
+        % vel_dim = [3]; % q_i_dot dimension
+        vel_dim = [3];
         
         k_dim = {}; % for each JRS, dimensions of trajectory parameters
         k_names = {}; % names of trajectory parameters for each JRS
@@ -40,8 +49,8 @@ classdef rotatotope_v3
     end
     
     methods
-        function obj = rotatotope_v3(varargin)
-            %ROTATOTOPE Construct an instance of this class
+        function obj = velocity_rotatotope(varargin)
+            %VELOCITY_ROTATOTOPE Construct an instance of this class
             %   obj = rotatotopes(rotation_axes, Jit, Li) where rotation
             %   axes is an array of column vectors specifying 3D axes of
             %   rotation (in body-fixed frame), Jit is a cell of zonotopes
@@ -110,83 +119,179 @@ classdef rotatotope_v3
                     end
                 end
             end
+
+            % because of product rule, we'll have to do this a bunch
+            % of times... basically we'll use the k-th joint's 
+            % velocities on this iteration, multiplied by all the 
+            % other joints' positions.
+            % ...ask me for a better write-up.
+            for k = length(obj.Jit):-1:1
             
-            % initialize outputs
-            Vit_tmp = obj.Li.Z;
-            if obj.dimension == 2
-                Vit_tmp = [Vit_tmp; zeros(1, size(Vit_tmp, 2))];
-            end
-            n_k = length(obj.k_list);
-            n_vec = size(Vit_tmp, 2);
-            fully_slc_tmp = zeros(1, n_vec);
-            fully_slc_tmp(1) = 1;
-            k_slc_tmp = zeros(n_k, n_vec);
-            
-            % apply the rotations specified in the JRS:
-            for i = length(obj.Jit):-1:1
-                
-                % get generator matrix
-                G = obj.Jit{i}.Z(:, 2:end);
-                G(:, ~any(G)) = []; % delete zero columns of G
-                
-                fully_slc_new = [];
-                k_slc_new = [];
-                Vit_new = [];
-                
-                % multiply link volume by rotation matrix created from
-                % center of JRS; no indeterminate is added (see eqn. (13))
-                % also see line 9 of Alg. 2
-                M = obj.make_matrix(obj.rotation_axes(:, i),...
-                    obj.Jit{i}.Z(obj.trig_dim, 1), true);
-                Vit_new = M*Vit_tmp;
-                fully_slc_new = [fully_slc_new, fully_slc_tmp];
-                k_slc_new = [k_slc_new, k_slc_tmp];
-                
-                % multiply link volume by rotation matrix created from
-                % generators of JRS; indeterminate is added (see eqn. (13)).
-                % also see line 9 of Alg. 2
-                for j = 1:size(G, 2)
-                    M = obj.make_matrix(obj.rotation_axes(:, i),...
-                        G(obj.trig_dim, j), false);
-                    Vit_new(:, (end+1):(end+size(Vit_tmp, 2))) = M*Vit_tmp;
-                    if any(G(obj.k_dim{i}, j)) ~= 0
+                % initialize outputs
+                % Vit_tmp = obj.Li.Z;
+                % if obj.dimension == 2
+                %     Vit_tmp = [Vit_tmp; zeros(1, size(Vit_tmp, 2))];
+                % end
+                % n_k = length(obj.k_list);
+                % n_vec = size(Vit_tmp, 2);
+                % fully_slc_tmp = zeros(1, n_vec);
+                % fully_slc_tmp(1) = 1;
+                % k_slc_tmp = zeros(n_k, n_vec);
+
+                % HACK: assume Li is a point.
+                Vit_tmp = obj.Jit{k}.Z(obj.vel_dim, :).*obj.Li.Z(:, 1);
+                if obj.dimension == 2
+                    Vit_tmp = [Vit_tmp; zeros(1, size(Vit_tmp, 2))];
+                end
+                n_k = length(obj.k_list);
+                n_vec = size(Vit_tmp, 2);
+                fully_slc_tmp = zeros(1, n_vec);
+                fully_slc_tmp(1) = 1;
+                k_slc_tmp = zeros(n_k, n_vec);
+                G = obj.Jit{k}.Z;
+                for j = 2:n_vec
+                    if any(G(obj.k_dim{k}, j)) ~= 0
                         % if generator is k-sliceable, then we can still
                         % evaluate indeterminate later on.
                         % add 1 to this row of k_slc, implying an
                         % additional indeterminate
-                        k_row = find(G(obj.k_dim{i}, j) ~= 0);
-                        k_name = obj.k_names{i}{k_row};
+                        k_row = find(G(obj.k_dim{k}, j) ~= 0);
+                        k_name = obj.k_names{k}{k_row};
                         k_idx = find(strcmp(k_name, obj.k_list));
-                        
-                        fully_slc_new = [fully_slc_new, fully_slc_tmp];
-                        k_slc_tmp_2 = k_slc_tmp;
-                        k_slc_tmp_2(k_idx, :) = k_slc_tmp_2(k_idx, :) + 1;
-                        k_slc_new = [k_slc_new, k_slc_tmp_2];
-                    else
-                        fully_slc_new = [fully_slc_new, zeros(1, n_vec)];
-                        k_slc_new = [k_slc_new, k_slc_tmp];
+                        k_slc_tmp(k_idx, j) = k_slc_tmp(k_idx, j) + 1;
+                        fully_slc_tmp(1, j) = 1;
                     end
                 end
+
+
                 
-                % reduce number of generators
-                % see Appendix D.D 
-                [Vit_tmp, fully_slc_tmp, k_slc_tmp] = obj.reduce(Vit_new, fully_slc_new, k_slc_new);
-                n_vec = size(Vit_tmp, 2);
-            end 
+                % apply the rotations specified in the JRS:
+                for i = length(obj.Jit):-1:1
+                    
+                    % get generator matrix
+                    G = obj.Jit{i}.Z(:, 2:end);
+                    G(:, ~any(G)) = []; % delete zero columns of G
+                    
+                    fully_slc_new = [];
+                    k_slc_new = [];
+                    Vit_new = [];
+                    
+                    % multiply link volume by rotation matrix created from
+                    % center of JRS; no indeterminate is added (see eqn. (13))
+                    % also see line 9 of Alg. 2
+                    if i ~= k
+                        M = obj.make_matrix(obj.rotation_axes(:, i), obj.Jit{i}.Z(obj.trig_dim, 1), true);
+                    else
+                        % instead of using this joint's positions,
+                        % we will multiply by velocities!!
+                        M = obj.make_velocity_matrix(obj.rotation_axes(:, i), obj.Jit{i}.Z([obj.trig_dim; obj.vel_dim], 1));
+                    end
+                    Vit_new = M*Vit_tmp;
+                    fully_slc_new = [fully_slc_new, fully_slc_tmp];
+                    k_slc_new = [k_slc_new, k_slc_tmp];
+                    
+                    % multiply link volume by rotation matrix created from
+                    % generators of JRS; indeterminate is added (see eqn. (13)).
+                    % also see line 9 of Alg. 2
+                    for j = 1:size(G, 2)
+                        if i ~= k
+                            M = obj.make_matrix(obj.rotation_axes(:, i), G(obj.trig_dim, j), false);
+                        else
+                            % instead of using this joint's positions,
+                            % we will multiply by velocities!!
+                            M = obj.make_velocity_matrix(obj.rotation_axes(:, i), G([obj.trig_dim; obj.vel_dim], j));
+                        end
+                        Vit_new(:, (end+1):(end+size(Vit_tmp, 2))) = M*Vit_tmp;
+                        if any(G(obj.k_dim{i}, j)) ~= 0
+                            % if generator is k-sliceable, then we can still
+                            % evaluate indeterminate later on.
+                            % add 1 to this row of k_slc, implying an
+                            % additional indeterminate
+                            k_row = find(G(obj.k_dim{i}, j) ~= 0);
+                            k_name = obj.k_names{i}{k_row};
+                            k_idx = find(strcmp(k_name, obj.k_list));
+                            
+                            fully_slc_new = [fully_slc_new, fully_slc_tmp];
+                            k_slc_tmp_2 = k_slc_tmp;
+                            k_slc_tmp_2(k_idx, :) = k_slc_tmp_2(k_idx, :) + 1;
+                            k_slc_new = [k_slc_new, k_slc_tmp_2];
+                        else
+                            fully_slc_new = [fully_slc_new, zeros(1, n_vec)];
+                            k_slc_new = [k_slc_new, k_slc_tmp];
+                        end
+                    end
+                    
+                    % reduce number of generators
+                    % see Appendix D.D 
+                    [Vit_tmp, fully_slc_tmp, k_slc_tmp] = obj.reduce(Vit_new, fully_slc_new, k_slc_new);
+                    n_vec = size(Vit_tmp, 2);
+                end 
+                
+                %SHANNON is goint to try to comment this out because that's
+                %what I did for position rotatotopes.
+%                 % check if 2D is desired; project if so
+%                 if obj.dimension == 2
+%                    Vit_tmp(3, :) = []; 
+%                 end
+                
+                % store rotatotope
+                Vit_term{k} = Vit_tmp;
+                            
+                % disregard first column (rotatotope center has no indeterminates)
+                fully_slc_term{k} = fully_slc_tmp(1, 2:end);
+                k_slc_term{k} = k_slc_tmp(:, 2:end);
+            end
+
+            % take Minkowski sum of all terms of product rule:
+            obj.Vit = Vit_term{1};
+            obj.fully_slc = fully_slc_term{1};
+            obj.k_slc = k_slc_term{1};
+            for k = 2:length(obj.Jit)
+                obj.Vit(:, 1) = obj.Vit(:, 1) + Vit_term{k}(:, 1);
+                obj.Vit = [obj.Vit, Vit_term{k}(:, 2:end)];
+                obj.fully_slc = [obj.fully_slc, fully_slc_term{k}];
+                obj.k_slc = [obj.k_slc, k_slc_term{k}];
+            end
+
+            % % one final reduction??
+            % [Vit_tmp, fully_slc_tmp, k_slc_tmp] = obj.reduce(obj.Vit, [1, obj.fully_slc], [zeros(size(obj.k_slc, 1), 1), obj.k_slc]);
+            % obj.Vit = Vit_tmp;
+            % obj.fully_slc = fully_slc_tmp(1, 2:end);
+            % obj.k_slc = k_slc_tmp(:, 2:end);
             
-            % check if 2D is desired; project if so
-            % SHANNON needed to comment this out because we're keeping the
-            % row of zeros in Vit
-%             if obj.dimension == 2
-%                Vit_tmp(3, :) = []; 
-%             end
             
-            % store rotatotope
-            obj.Vit = Vit_tmp;
-                        
-            % disregard first column (rotatotope center has no indeterminates)
-            obj.fully_slc = fully_slc_tmp(1, 2:end);
-            obj.k_slc = k_slc_tmp(:, 2:end);
+            % combine generators that have the same coefficients!!
+            c_tmp = obj.Vit(:, 1);
+            G_tmp = obj.Vit(:, 2:end);
+            fully_slc_tmp = obj.fully_slc;
+            k_slc_tmp = obj.k_slc;
+            n_vec = size(G_tmp, 2);
+            % loop through generators...
+            % check for generators whose coefficients are exactly the
+            % same... these can be combined into one!! must be fully
+            % sliceable and have the same k_slc values.
+            i = 1;
+            while i < n_vec
+                if fully_slc_tmp(i) == 0
+                    i = i+1;
+                    continue;
+                end
+                curr_k_slc = k_slc_tmp(:, i);
+                duplicate_idxs = find(fully_slc_tmp((i+1):end) == 1 & all(k_slc_tmp(:, (i+1):end) == curr_k_slc));
+                if ~isempty(duplicate_idxs)
+                    duplicate_idxs = i + duplicate_idxs;
+                    % found generator(s) whose coefficients match
+                    G_tmp(:, i) = G_tmp(:, i) + sum(G_tmp(:, duplicate_idxs), 2);
+                    G_tmp(:, duplicate_idxs) = [];
+                    fully_slc_tmp(:, duplicate_idxs) = [];
+                    k_slc_tmp(:, duplicate_idxs) = [];
+                    n_vec = size(G_tmp, 2);
+                end
+                i = i+1;
+            end
+            obj.Vit = [c_tmp, G_tmp];
+            obj.fully_slc = fully_slc_tmp;
+            obj.k_slc = k_slc_tmp;
         end
         
         function M = make_matrix(obj, rotation_axis, x, is_center)
@@ -213,6 +318,30 @@ classdef rotatotope_v3
             else
                 M = sq*K + -cq*K^2;
             end
+        end
+
+        function M = make_velocity_matrix(obj, rotation_axis, x)
+            % given a rotation axis and JRS generator, construct the 
+            % matrix describing the derivative of the rotation matrix
+            
+            cq = x(1); % cosine dimension
+            sq = x(2); % sine dimension
+            % dq = x(3); % q_i_dot dimension
+            % dcq = x(3);
+            % dsq = x(4);
+            if (length(rotation_axis) ~= 3)
+                error('Specify a 3D rotation axis. If in 2D, use [0;0;1]');
+            end
+            
+            % use axis-angle formula to get rotation matrix:
+            % https://en.wikipedia.org/wiki/Rodrigues%27_rotation_formula
+            e = rotation_axis./norm(rotation_axis);
+            K = [0 -e(3) e(2);...
+                 e(3) 0 -e(1);...
+                 -e(2) e(1) 0];
+%             M = dq*(cq*K + sq*K^2);
+            M = (cq*K + sq*K^2);
+            % M = dsq*K - dcq*K^2;
         end
         
         function [Vit_tmp, fully_slc_tmp, k_slc_tmp] = reduce(obj, Vit_new, fully_slc_new, k_slc_new)
@@ -262,6 +391,8 @@ classdef rotatotope_v3
                 k_slc_tmp = k_slc_new;
             end
         end
+        
+        
         
         function obj = stack(obj, prev)
             % "stack" (a.k.a, take Minkowski sum) of this rotatotope and
@@ -334,22 +465,31 @@ classdef rotatotope_v3
             Z = [c_out, G_out];
         end
         
-        function [p] = plot(obj, color, buffer, p)
+        function [p] = plot(obj, color, p)
             if ~exist('color', 'var')
                 color = 'b';
-            end
-            if ~exist('buffer', 'var')
-                buffer = 0;
             end
             if ~exist('p', 'var')
                 p = [];
             end
+            
+            % check for indices where the coefficient can only be in [0, 1]
+%             after slicing...
+            c_tmp = obj.Vit(:, 1);
+            G_tmp = obj.Vit(:, 2:end);
             %Shannon added: back down to 2!!
             if obj.dimension == 2
-                Z = zonotope([obj.Vit(1:2, :), buffer/2*eye(obj.dimension)]);
-            else
-                Z = zonotope([obj.Vit, buffer/2*eye(obj.dimension)]);
+                c_tmp = c_tmp(1:2, :);
+                G_tmp = G_tmp(1:2, :);
             end
+            idxs = (obj.fully_slc == 1) & ~all(obj.k_slc == 0) & all(mod(obj.k_slc, 2) == 0);
+            c_tmp = c_tmp + 0.5*sum(G_tmp(:, idxs), 2);
+            G_tmp(:, idxs) = 0.5*G_tmp(:, idxs);
+            
+            Z = zonotope([c_tmp, G_tmp]);
+
+%             Z = zonotope(obj.Vit);
+
             switch obj.dimension
                 case 2
                     p = plotFilled(Z, [1, 2], color);
