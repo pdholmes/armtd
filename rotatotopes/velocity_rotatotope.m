@@ -392,7 +392,215 @@ classdef velocity_rotatotope
             end
         end
         
-        
+        function obj = redefine_k_slc( obj, rot_axes_new, Jit_new )
+            
+            
+                        % initialize K information
+            for i = 1:length(Jit_new)
+                % get generator matrix
+                G = Jit_new{i}.Z(:, 2:end);
+                G(:, ~any(G)) = []; % delete zero columns of G
+                
+                n_k = length(obj.k_dim{i});
+                for j = 1:n_k
+                    if ~any(strcmp(obj.k_names{i}{j}, obj.k_list))
+                        % add parameter to list
+                        obj.k_list{end+1, 1} = obj.k_names{i}{j};
+                        obj.c_k(end+1, 1) = Jit_new{i}.Z(obj.k_dim{i}(j), 1);
+                        k_col = find(G(obj.k_dim{i}(j), :) ~= 0);
+                        if length(k_col) == 1
+                            obj.delta_k(end+1, 1) = G(obj.k_dim{i}(j), k_col);
+                        elseif length(k_col) > 1
+                            error('More than one generator for k-dimension');
+                        elseif isempty(k_col)
+                            error('No generator found for that k-dimension');
+                        end
+                    else
+                        % we've already seen this parameter... check
+                        % that the intervals for parameter are the same.
+                        k_idx = find(strcmp(obj.k_names{i}{j}, obj.k_list));
+                        c_k_tmp = Jit_new{i}.Z(obj.k_dim{i}(j), 1);
+                        k_col = find(G(obj.k_dim{i}(j), :) ~= 0);
+                        if length(k_col) == 1
+                            delta_k_tmp = G(obj.k_dim{i}(j), k_col);
+                        elseif length(k_col) > 1
+                            error('More than one generator for k-dimension');
+                        elseif isempty(k_col)
+                            error('No generator found for that k-dimension');
+                        end
+                        if (c_k_tmp ~= obj.c_k(k_idx, 1)) || (delta_k_tmp ~= obj.delta_k(k_idx, 1))
+                            error('Same parameter used for multiple joints, but parameter range is different');
+                        end
+                    end
+                end
+            end
+
+            % because of product rule, we'll have to do this a bunch
+            % of times... basically we'll use the k-th joint's 
+            % velocities on this iteration, multiplied by all the 
+            % other joints' positions.
+            % ...ask me for a better write-up.
+            for k = length(Jit_new):-1:1
+            
+                % initialize outputs
+                % Vit_tmp = obj.Li.Z;
+                % if obj.dimension == 2
+                %     Vit_tmp = [Vit_tmp; zeros(1, size(Vit_tmp, 2))];
+                % end
+                % n_k = length(obj.k_list);
+                % n_vec = size(Vit_tmp, 2);
+                % fully_slc_tmp = zeros(1, n_vec);
+                % fully_slc_tmp(1) = 1;
+                % k_slc_tmp = zeros(n_k, n_vec);
+
+                % HACK: assume Li is a point.
+                Vit_tmp = Jit_new{k}.Z(obj.vel_dim, :).*obj.Li.Z(:, 1);
+                if obj.dimension == 2
+                    Vit_tmp = [Vit_tmp; zeros(1, size(Vit_tmp, 2))];
+                end
+                n_k = length(obj.k_list);
+                n_vec = size(Vit_tmp, 2);
+                fully_slc_tmp = zeros(1, n_vec);
+                fully_slc_tmp(1) = 1;
+                k_slc_tmp = zeros(n_k, n_vec);
+                G = Jit_new{k}.Z;
+                for j = 2:n_vec
+                    if any(G(obj.k_dim{k}, j)) ~= 0
+                        % if generator is k-sliceable, then we can still
+                        % evaluate indeterminate later on.
+                        % add 1 to this row of k_slc, implying an
+                        % additional indeterminate
+                        k_row = find(G(obj.k_dim{k}, j) ~= 0);
+                        k_name = obj.k_names{k}{k_row};
+                        k_idx = find(strcmp(k_name, obj.k_list));
+                        k_slc_tmp(k_idx, j) = k_slc_tmp(k_idx, j) + 1;
+                        fully_slc_tmp(1, j) = 1;
+                    end
+                end
+
+
+                
+                % apply the rotations specified in the JRS:
+                for i = length(Jit_new):-1:1
+                    
+                    % get generator matrix
+                    G = Jit_new{i}.Z(:, 2:end);
+                    G(:, ~any(G)) = []; % delete zero columns of G
+                    
+                    fully_slc_new = [];
+                    k_slc_new = [];
+                    Vit_new = [];
+                    
+                    % multiply link volume by rotation matrix created from
+                    % center of JRS; no indeterminate is added (see eqn. (13))
+                    % also see line 9 of Alg. 2
+                    if i ~= k
+                        M = obj.make_matrix(rot_axes_new(:, i), Jit_new{i}.Z(obj.trig_dim, 1), true);
+                    else
+                        % instead of using this joint's positions,
+                        % we will multiply by velocities!!
+                        M = obj.make_velocity_matrix(rot_axes_new(:, i), Jit_new{i}.Z([obj.trig_dim; obj.vel_dim], 1));
+                    end
+                    Vit_new = M*Vit_tmp;
+                    fully_slc_new = [fully_slc_new, fully_slc_tmp];
+                    k_slc_new = [k_slc_new, k_slc_tmp];
+                    
+                    % multiply link volume by rotation matrix created from
+                    % generators of JRS; indeterminate is added (see eqn. (13)).
+                    % also see line 9 of Alg. 2
+                    for j = 1:size(G, 2)
+                        if i ~= k
+                            M = obj.make_matrix(rot_axes_new(:, i), G(obj.trig_dim, j), false);
+                        else
+                            % instead of using this joint's positions,
+                            % we will multiply by velocities!!
+                            M = obj.make_velocity_matrix(rot_axes_new(:, i), G([obj.trig_dim; obj.vel_dim], j));
+                        end
+                        Vit_new(:, (end+1):(end+size(Vit_tmp, 2))) = M*Vit_tmp;
+                        if any(G(obj.k_dim{i}, j)) ~= 0
+                            % if generator is k-sliceable, then we can still
+                            % evaluate indeterminate later on.
+                            % add 1 to this row of k_slc, implying an
+                            % additional indeterminate
+                            k_row = find(G(obj.k_dim{i}, j) ~= 0);
+                            k_name = obj.k_names{i}{k_row};
+                            k_idx = find(strcmp(k_name, obj.k_list));
+                            
+                            fully_slc_new = [fully_slc_new, fully_slc_tmp];
+                            k_slc_tmp_2 = k_slc_tmp;
+                            k_slc_tmp_2(k_idx, :) = k_slc_tmp_2(k_idx, :) + 1;
+                            k_slc_new = [k_slc_new, k_slc_tmp_2];
+                        else
+                            fully_slc_new = [fully_slc_new, zeros(1, n_vec)];
+                            k_slc_new = [k_slc_new, k_slc_tmp];
+                        end
+                    end
+                    
+                    % reduce number of generators
+                    % see Appendix D.D 
+                    [Vit_tmp, fully_slc_tmp, k_slc_tmp] = obj.reduce(Vit_new, fully_slc_new, k_slc_new);
+                    n_vec = size(Vit_tmp, 2);
+                end 
+                
+                % store rotatotope
+                Vit_term{k} = Vit_tmp;
+                            
+                % disregard first column (rotatotope center has no indeterminates)
+                fully_slc_term{k} = fully_slc_tmp(1, 2:end);
+                k_slc_term{k} = k_slc_tmp(:, 2:end);
+            end
+
+            % take Minkowski sum of all terms of product rule:
+            obj_Vit = Vit_term{1};
+            obj.fully_slc = fully_slc_term{1};
+            obj.k_slc = k_slc_term{1};
+            for k = 2:length(Jit_new)
+                obj_Vit(:, 1) = obj_Vit(:, 1) + Vit_term{k}(:, 1);
+                obj_Vit = [obj_Vit, Vit_term{k}(:, 2:end)];
+                obj.fully_slc = [obj.fully_slc, fully_slc_term{k}];
+                obj.k_slc = [obj.k_slc, k_slc_term{k}];
+            end
+
+            % % one final reduction??
+            % [Vit_tmp, fully_slc_tmp, k_slc_tmp] = obj.reduce(obj.Vit, [1, obj.fully_slc], [zeros(size(obj.k_slc, 1), 1), obj.k_slc]);
+            % obj.Vit = Vit_tmp;
+            % obj.fully_slc = fully_slc_tmp(1, 2:end);
+            % obj.k_slc = k_slc_tmp(:, 2:end);
+            
+            
+            % combine generators that have the same coefficients!!
+            c_tmp = obj_Vit(:, 1);
+            G_tmp = obj_Vit(:, 2:end);
+            fully_slc_tmp = obj.fully_slc;
+            k_slc_tmp = obj.k_slc;
+            n_vec = size(G_tmp, 2);
+            % loop through generators...
+            % check for generators whose coefficients are exactly the
+            % same... these can be combined into one!! must be fully
+            % sliceable and have the same k_slc values.
+            i = 1;
+            while i < n_vec
+                if fully_slc_tmp(i) == 0
+                    i = i+1;
+                    continue;
+                end
+                curr_k_slc = k_slc_tmp(:, i);
+                duplicate_idxs = find(fully_slc_tmp((i+1):end) == 1 & all(k_slc_tmp(:, (i+1):end) == curr_k_slc));
+                if ~isempty(duplicate_idxs)
+                    duplicate_idxs = i + duplicate_idxs;
+                    % found generator(s) whose coefficients match
+                    G_tmp(:, i) = G_tmp(:, i) + sum(G_tmp(:, duplicate_idxs), 2);
+                    G_tmp(:, duplicate_idxs) = [];
+                    fully_slc_tmp(:, duplicate_idxs) = [];
+                    k_slc_tmp(:, duplicate_idxs) = [];
+                    n_vec = size(G_tmp, 2);
+                end
+                i = i+1;
+            end
+            
+            obj.fully_slc = fully_slc_tmp;
+            obj.k_slc = k_slc_tmp;
+        end
         
         function obj = stack(obj, prev)
             % "stack" (a.k.a, take Minkowski sum) of this rotatotope and
