@@ -187,6 +187,9 @@ classdef rotatotope_v3
             % disregard first column (rotatotope center has no indeterminates)
             obj.fully_slc = fully_slc_tmp(1, 2:end);
             obj.k_slc = k_slc_tmp(:, 2:end);
+
+            % combine generators with same coefficients:
+            obj = obj.combine_generators();
         end
         
         function M = make_matrix(obj, rotation_axis, x, is_center)
@@ -263,118 +266,118 @@ classdef rotatotope_v3
             end
         end
         
-        function obj = redefine_k_slc( obj, rot_axes_new, Jit_new )
+        % function obj = redefine_k_slc( obj, rot_axes_new, Jit_new )
 
-             % initialize K information
-            for i = 1:length(Jit_new)
-                % get generator matrix
-                G = Jit_new{i}.Z(:, 2:end);
-                G(:, ~any(G)) = []; % delete zero columns of G
+        %      % initialize K information
+        %     for i = 1:length(Jit_new)
+        %         % get generator matrix
+        %         G = Jit_new{i}.Z(:, 2:end);
+        %         G(:, ~any(G)) = []; % delete zero columns of G
 
-                n_k = length(obj.k_dim{i});
-                for j = 1:n_k
-                    if ~any(strcmp(obj.k_names{i}{j}, obj.k_list))
-                        % add parameter to list
-                        obj.k_list{end+1, 1} = obj.k_names{i}{j};
-                        obj.c_k(end+1, 1) = Jit_new{i}.Z(obj.k_dim{i}(j), 1);
-                        k_col = find(G(obj.k_dim{i}(j), :) ~= 0);
-                        if length(k_col) == 1
-                            obj.delta_k(end+1, 1) = G(obj.k_dim{i}(j), k_col);
-                        elseif length(k_col) > 1
-                            error('More than one generator for k-dimension');
-                        elseif isempty(k_col)
-                            error('No generator found for that k-dimension');
-                        end
-                    else
-                        % we've already seen this parameter... check
-                        % that the intervals for parameter are the same.
-                        k_idx = find(strcmp(obj.k_names{i}{j}, obj.k_list));
-                        c_k_tmp = Jit_new{i}.Z(obj.k_dim{i}(j), 1);
-                        k_col = find(G(obj.k_dim{i}(j), :) ~= 0);
-                        if length(k_col) == 1
-                            delta_k_tmp = G(obj.k_dim{i}(j), k_col);
-                        elseif length(k_col) > 1
-                            error('More than one generator for k-dimension');
-                        elseif isempty(k_col)
-                            error('No generator found for that k-dimension');
-                        end
-                        if (c_k_tmp ~= obj.c_k(k_idx, 1)) ||...
-                                (delta_k_tmp ~= obj.delta_k(k_idx, 1))
-                            error('Same parameter used for multiple joints, but parameter range is different');
-                        end
-                    end
-                end
-            end
+        %         n_k = length(obj.k_dim{i});
+        %         for j = 1:n_k
+        %             if ~any(strcmp(obj.k_names{i}{j}, obj.k_list))
+        %                 % add parameter to list
+        %                 obj.k_list{end+1, 1} = obj.k_names{i}{j};
+        %                 obj.c_k(end+1, 1) = Jit_new{i}.Z(obj.k_dim{i}(j), 1);
+        %                 k_col = find(G(obj.k_dim{i}(j), :) ~= 0);
+        %                 if length(k_col) == 1
+        %                     obj.delta_k(end+1, 1) = G(obj.k_dim{i}(j), k_col);
+        %                 elseif length(k_col) > 1
+        %                     error('More than one generator for k-dimension');
+        %                 elseif isempty(k_col)
+        %                     error('No generator found for that k-dimension');
+        %                 end
+        %             else
+        %                 % we've already seen this parameter... check
+        %                 % that the intervals for parameter are the same.
+        %                 k_idx = find(strcmp(obj.k_names{i}{j}, obj.k_list));
+        %                 c_k_tmp = Jit_new{i}.Z(obj.k_dim{i}(j), 1);
+        %                 k_col = find(G(obj.k_dim{i}(j), :) ~= 0);
+        %                 if length(k_col) == 1
+        %                     delta_k_tmp = G(obj.k_dim{i}(j), k_col);
+        %                 elseif length(k_col) > 1
+        %                     error('More than one generator for k-dimension');
+        %                 elseif isempty(k_col)
+        %                     error('No generator found for that k-dimension');
+        %                 end
+        %                 if (c_k_tmp ~= obj.c_k(k_idx, 1)) ||...
+        %                         (delta_k_tmp ~= obj.delta_k(k_idx, 1))
+        %                     error('Same parameter used for multiple joints, but parameter range is different');
+        %                 end
+        %             end
+        %         end
+        %     end
 
-            % initialize outputs
-            Vit_tmp = obj.Li.Z;
-            if obj.dimension == 2
-                Vit_tmp = [Vit_tmp; zeros(1, size(Vit_tmp, 2))];
-            end
-            n_k = length(obj.k_list);
-            n_vec = size(Vit_tmp, 2);
-            fully_slc_tmp = zeros(1, n_vec);
-            fully_slc_tmp(1) = 1;
-            k_slc_tmp = zeros(n_k, n_vec);
+        %     % initialize outputs
+        %     Vit_tmp = obj.Li.Z;
+        %     if obj.dimension == 2
+        %         Vit_tmp = [Vit_tmp; zeros(1, size(Vit_tmp, 2))];
+        %     end
+        %     n_k = length(obj.k_list);
+        %     n_vec = size(Vit_tmp, 2);
+        %     fully_slc_tmp = zeros(1, n_vec);
+        %     fully_slc_tmp(1) = 1;
+        %     k_slc_tmp = zeros(n_k, n_vec);
 
-            % apply the rotations specified in the JRS:
-            for i = length(Jit_new):-1:1
+        %     % apply the rotations specified in the JRS:
+        %     for i = length(Jit_new):-1:1
 
-                % get generator matrix
-                G = Jit_new{i}.Z(:, 2:end);
-                G(:, ~any(G)) = []; % delete zero columns of G
+        %         % get generator matrix
+        %         G = Jit_new{i}.Z(:, 2:end);
+        %         G(:, ~any(G)) = []; % delete zero columns of G
 
-                fully_slc_new = [];
-                k_slc_new = [];
-                Vit_new = [];
+        %         fully_slc_new = [];
+        %         k_slc_new = [];
+        %         Vit_new = [];
 
-                % multiply link volume by rotation matrix created from
-                % center of JRS; no indeterminate is added (see eqn. (13))
-                % also see line 9 of Alg. 2
-                M = obj.make_matrix(rot_axes_new(:, i),...
-                    Jit_new{i}.Z(obj.trig_dim, 1), true);
-                Vit_new = M*Vit_tmp;
-                fully_slc_new = [fully_slc_new, fully_slc_tmp];
-                k_slc_new = [k_slc_new, k_slc_tmp];
+        %         % multiply link volume by rotation matrix created from
+        %         % center of JRS; no indeterminate is added (see eqn. (13))
+        %         % also see line 9 of Alg. 2
+        %         M = obj.make_matrix(rot_axes_new(:, i),...
+        %             Jit_new{i}.Z(obj.trig_dim, 1), true);
+        %         Vit_new = M*Vit_tmp;
+        %         fully_slc_new = [fully_slc_new, fully_slc_tmp];
+        %         k_slc_new = [k_slc_new, k_slc_tmp];
 
-                % multiply link volume by rotation matrix created from
-                % generators of JRS; indeterminate is added (see eqn. (13)).
-                % also see line 9 of Alg. 2
-                for j = 1:size(G, 2)
-                    M = obj.make_matrix(rot_axes_new(:, i),...
-                        G(obj.trig_dim, j), false);
-                    Vit_new(:, (end+1):(end+size(Vit_tmp, 2))) = M*Vit_tmp;
-                    if any(G(obj.k_dim{i}, j)) ~= 0
-                        % if generator is k-sliceable, then we can still
-                        % evaluate indeterminate later on.
-                        % add 1 to this row of k_slc, implying an
-                        % additional indeterminate
-                        k_row = find(G(obj.k_dim{i}, j) ~= 0);
-                        k_name = obj.k_names{i}{k_row};
-                        k_idx = find(strcmp(k_name, obj.k_list));
+        %         % multiply link volume by rotation matrix created from
+        %         % generators of JRS; indeterminate is added (see eqn. (13)).
+        %         % also see line 9 of Alg. 2
+        %         for j = 1:size(G, 2)
+        %             M = obj.make_matrix(rot_axes_new(:, i),...
+        %                 G(obj.trig_dim, j), false);
+        %             Vit_new(:, (end+1):(end+size(Vit_tmp, 2))) = M*Vit_tmp;
+        %             if any(G(obj.k_dim{i}, j)) ~= 0
+        %                 % if generator is k-sliceable, then we can still
+        %                 % evaluate indeterminate later on.
+        %                 % add 1 to this row of k_slc, implying an
+        %                 % additional indeterminate
+        %                 k_row = find(G(obj.k_dim{i}, j) ~= 0);
+        %                 k_name = obj.k_names{i}{k_row};
+        %                 k_idx = find(strcmp(k_name, obj.k_list));
 
-                        fully_slc_new = [fully_slc_new, fully_slc_tmp];
-                        k_slc_tmp_2 = k_slc_tmp;
-                        k_slc_tmp_2(k_idx, :) = k_slc_tmp_2(k_idx, :) + 1;
-                        k_slc_new = [k_slc_new, k_slc_tmp_2];
-                    else
-                        fully_slc_new = [fully_slc_new, zeros(1, n_vec)];
-                        k_slc_new = [k_slc_new, k_slc_tmp];
-                    end
-                end
+        %                 fully_slc_new = [fully_slc_new, fully_slc_tmp];
+        %                 k_slc_tmp_2 = k_slc_tmp;
+        %                 k_slc_tmp_2(k_idx, :) = k_slc_tmp_2(k_idx, :) + 1;
+        %                 k_slc_new = [k_slc_new, k_slc_tmp_2];
+        %             else
+        %                 fully_slc_new = [fully_slc_new, zeros(1, n_vec)];
+        %                 k_slc_new = [k_slc_new, k_slc_tmp];
+        %             end
+        %         end
 
-                % reduce number of generators
-                % see Appendix D.D 
-                [Vit_tmp, fully_slc_tmp, k_slc_tmp] = obj.reduce(Vit_new,...
-                    fully_slc_new, k_slc_new);
-                n_vec = size(Vit_tmp, 2);
-            end 
+        %         % reduce number of generators
+        %         % see Appendix D.D 
+        %         [Vit_tmp, fully_slc_tmp, k_slc_tmp] = obj.reduce(Vit_new,...
+        %             fully_slc_new, k_slc_new);
+        %         n_vec = size(Vit_tmp, 2);
+        %     end 
 
-            % disregard first column (rotatotope center has no indeterminates)
-            obj.fully_slc = fully_slc_tmp(1, 2:end);
-            obj.k_slc = k_slc_tmp(:, 2:end);
+        %     % disregard first column (rotatotope center has no indeterminates)
+        %     obj.fully_slc = fully_slc_tmp(1, 2:end);
+        %     obj.k_slc = k_slc_tmp(:, 2:end);
 
-        end
+        % end
         
         function obj = stack(obj, prev)
             % "stack" (a.k.a, take Minkowski sum) of this rotatotope and
@@ -404,7 +407,9 @@ classdef rotatotope_v3
             
             obj.k_list = new_k_list;
             obj.k_slc = new_k_slc;
-            
+
+            % combine generators with same coefficients:
+            obj = obj.combine_generators();
         end
         
         function Z = slice(obj, k_names, k_values, fully_slc_only)
@@ -417,9 +422,11 @@ classdef rotatotope_v3
             c = obj.Vit(:, 1);
             G_sliced = obj.Vit(:, 2:end);
             slice_coefficient = zeros(length(k_names), 1);
+            k_slc_tmp = obj.k_slc; % use this too keep track of gens that have been sliced
             for i = 1:length(k_names)
                 k_idx = find(strcmp(k_names{i}, obj.k_list));
                 if isempty(k_idx)
+                    disp([k_names{i} ' not found in k_list.']);
                     continue;
                 end
                 if abs(k_values(i) - obj.c_k(k_idx)) > obj.delta_k(k_idx)
@@ -436,15 +443,51 @@ classdef rotatotope_v3
                     % slice gens... if indeterminate appears twice, then
                     % square coefficient, three times => cube, etc.
                     G_sliced(:, slice_gen_idxs(j)) = G_sliced(:, slice_gen_idxs(j))*slice_coefficient(i)^obj.k_slc(k_idx, slice_gen_idxs(j));
+                    k_slc_tmp(k_idx, slice_gen_idxs(j)) = 0; % remove indeterminate coefficients associated with parameter.
                 end
             end
             
             % take the fully sliced generators, add to center
             % see Alg. 1, line 11
-            c_out = c + sum(G_sliced(:, obj.fully_slc == 1), 2);
-            G_out = G_sliced(:, ~(obj.fully_slc == 1));
+            c_out = c + sum(G_sliced(:, obj.fully_slc == 1 & all(k_slc_tmp == 0, 1)), 2);
+            G_out = G_sliced(:, ~(obj.fully_slc == 1 & all(k_slc_tmp == 0, 1)));
             
             Z = [c_out, G_out];
+        end
+
+        function obj = combine_generators(obj)
+            % combine generators that have the same coefficients!!
+            c_tmp = obj.Vit(:, 1);
+            G_tmp = obj.Vit(:, 2:end);
+            fully_slc_tmp = obj.fully_slc;
+            k_slc_tmp = obj.k_slc;
+            n_vec = size(G_tmp, 2);
+            % loop through generators...
+            % check for generators whose coefficients are exactly the
+            % same... these can be combined into one!! must be fully
+            % sliceable and have the same k_slc values.
+            i = 1;
+            while i < n_vec
+                if fully_slc_tmp(i) == 0
+                    i = i+1;
+                    continue;
+                end
+                curr_k_slc = k_slc_tmp(:, i);
+                duplicate_idxs = find(fully_slc_tmp((i+1):end) == 1 & all(k_slc_tmp(:, (i+1):end) == curr_k_slc, 1));
+                if ~isempty(duplicate_idxs)
+                    duplicate_idxs = i + duplicate_idxs;
+                    % found generator(s) whose coefficients match
+                    G_tmp(:, i) = G_tmp(:, i) + sum(G_tmp(:, duplicate_idxs), 2);
+                    G_tmp(:, duplicate_idxs) = [];
+                    fully_slc_tmp(:, duplicate_idxs) = [];
+                    k_slc_tmp(:, duplicate_idxs) = [];
+                    n_vec = size(G_tmp, 2);
+                end
+                i = i+1;
+            end
+            obj.Vit = [c_tmp, G_tmp];
+            obj.fully_slc = fully_slc_tmp;
+            obj.k_slc = k_slc_tmp;
         end
         
         function [p] = plot(obj, color, buffer, p)
@@ -457,12 +500,28 @@ classdef rotatotope_v3
             if ~exist('p', 'var')
                 p = [];
             end
+            % %Shannon added: back down to 2!!
+            % if obj.dimension == 2
+            %     Z = zonotope([obj.Vit(1:2, :), buffer/2*eye(obj.dimension)]);
+            % else
+            %     Z = zonotope([obj.Vit, buffer/2*eye(obj.dimension)]);
+            % end
+
+            % check for indices where the coefficient can only be in [0, 1]
+            % after slicing...
+            c_tmp = obj.Vit(:, 1);
+            G_tmp = obj.Vit(:, 2:end);
             %Shannon added: back down to 2!!
             if obj.dimension == 2
-                Z = zonotope([obj.Vit(1:2, :), buffer/2*eye(obj.dimension)]);
-            else
-                Z = zonotope([obj.Vit, buffer/2*eye(obj.dimension)]);
+                c_tmp = c_tmp(1:2, :);
+                G_tmp = G_tmp(1:2, :);
             end
+            idxs = (obj.fully_slc == 1) & ~all(obj.k_slc == 0, 1) & all(mod(obj.k_slc, 2) == 0, 1);
+            c_tmp = c_tmp + 0.5*sum(G_tmp(:, idxs), 2);
+            G_tmp(:, idxs) = 0.5*G_tmp(:, idxs);
+            
+            Z = zonotope([c_tmp, G_tmp]);
+
             switch obj.dimension
                 case 2
                     p = plotFilled(Z, [1, 2], color);
