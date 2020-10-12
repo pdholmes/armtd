@@ -572,14 +572,21 @@ classdef velocity_rotatotope
         %     obj.k_slc = k_slc_tmp;
         % end
         
-        function obj = stack(obj, prev)
+        function obj = stack(obj, prev, stack_coeff)
             % "stack" (a.k.a, take Minkowski sum) of this rotatotope and
             % the rotatotope specified by prev (usually, the rotatotope
             % describing possible positions of the predecessor joint)
             % see eqn. (16) for more details, and line 13 of Alg. 2
+            %
+            % new argument `stack_coeff` let's you multiply previous
+            % rotatotope by a coefficient when stacking.
+
+            if ~exist('stack_coeff', 'var')
+                stack_coeff = 1;
+            end
             
-            c = obj.Vit(:, 1) + prev.Vit(:, 1);
-            G = [obj.Vit(:, 2:end), prev.Vit(:, 2:end)];
+            c = obj.Vit(:, 1) + stack_coeff*prev.Vit(:, 1);
+            G = [obj.Vit(:, 2:end), stack_coeff*prev.Vit(:, 2:end)];
             obj.Vit = [c, G];
             
             obj.fully_slc = [obj.fully_slc, prev.fully_slc];
@@ -587,19 +594,37 @@ classdef velocity_rotatotope
             % merge lists of parameters and indeterminates
             new_k_list = unique([obj.k_list(:); prev.k_list(:)]);
             new_k_slc = [];
+            c_k = [];
+            delta_k = [];
             for i = 1:length(new_k_list)
-               k_slc_1 = obj.k_slc(find(strcmp(new_k_list{i}, obj.k_list)), :);
-               k_slc_2 = prev.k_slc(find(strcmp(new_k_list{i}, prev.k_list)), :);
-               if isempty(k_slc_1)
-                   k_slc_1 = zeros(1, size(obj.Vit(:, 2:end), 2));
-               elseif isempty(k_slc_2)
-                   k_slc_2 = zeros(1, size(prev.Vit(:, 2:end), 2));
-               end
-               new_k_slc(i, :) = [k_slc_1, k_slc_2];
+                curr_k_idx = find(strcmp(new_k_list{i}, obj.k_list));
+                prev_k_idx = find(strcmp(new_k_list{i}, prev.k_list));
+                if isempty(curr_k_idx)
+                    k_slc_1 = zeros(1, size(obj.Vit(:, 2:end), 2));
+                    k_slc_2 = prev.k_slc(prev_k_idx, :);
+                    c_k(i, 1) = prev.c_k(prev_k_idx);
+                    delta_k(i, 1) = prev.delta_k(prev_k_idx);
+                elseif isempty(prev_k_idx)
+                    k_slc_1 = obj.k_slc(curr_k_idx, :);
+                    k_slc_2 = zeros(1, size(prev.Vit(:, 2:end), 2));
+                    c_k(i, 1) = obj.c_k(curr_k_idx);
+                    delta_k(i, 1) = obj.delta_k(curr_k_idx);
+                else
+                    k_slc_1 = obj.k_slc(curr_k_idx, :);
+                    k_slc_2 = prev.k_slc(prev_k_idx, :);
+                    if (obj.c_k(curr_k_idx) ~= prev.c_k(prev_k_idx)) || (obj.delta_k(curr_k_idx) ~= prev.delta_k(prev_k_idx))
+                        error('shared parameter detected, but ranges are different.')
+                    end
+                    c_k(i, 1) = obj.c_k(curr_k_idx);
+                    delta_k(i, 1) = obj.delta_k(curr_k_idx);
+                end
+                new_k_slc(i, :) = [k_slc_1, k_slc_2];
             end
             
             obj.k_list = new_k_list;
             obj.k_slc = new_k_slc;
+            obj.c_k = c_k;
+            obj.delta_k = delta_k;
 
             % combine generators with same coefficients:
             obj = obj.combine_generators();

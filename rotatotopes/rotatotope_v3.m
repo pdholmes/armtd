@@ -10,7 +10,7 @@ classdef rotatotope_v3
         Jit = {}; % cell of zonotopes representing JRS of i-th joint at time t
         Li; % zonotope representing i-th link (or joint) volume
         
-        n_generators = 15; % maximum number of rotatotope generators to keep after reduction
+        n_generators = 30; % maximum number of rotatotope generators to keep after reduction
         
         trig_dim = [1, 2]; % cos(q_i) and sin(q_i) dimensions in each Jit
         
@@ -61,9 +61,15 @@ classdef rotatotope_v3
                 if ~isa(obj.Li, 'zonotope')
                    error('Specify the link volume Li as a zonotope'); 
                 end
+
+                obj = obj.multiply();
             else
-                error('rotatotope requires 5 arguments');
+                % error('rotatotope requires 5 arguments');
             end
+
+        end
+
+        function obj = multiply(obj);
             
             % infer dimension from link volume
             obj.dimension = size(obj.Li.Z, 1);
@@ -379,14 +385,21 @@ classdef rotatotope_v3
 
         % end
         
-        function obj = stack(obj, prev)
+        function obj = stack(obj, prev, stack_coeff)
             % "stack" (a.k.a, take Minkowski sum) of this rotatotope and
             % the rotatotope specified by prev (usually, the rotatotope
             % describing possible positions of the predecessor joint)
             % see eqn. (16) for more details, and line 13 of Alg. 2
+            %
+            % new argument `stack_coeff` let's you multiply previous
+            % rotatotope by a coefficient when stacking.
+
+            if ~exist('stack_coeff', 'var')
+                stack_coeff = 1;
+            end
             
-            c = obj.Vit(:, 1) + prev.Vit(:, 1);
-            G = [obj.Vit(:, 2:end), prev.Vit(:, 2:end)];
+            c = obj.Vit(:, 1) + stack_coeff*prev.Vit(:, 1);
+            G = [obj.Vit(:, 2:end), stack_coeff*prev.Vit(:, 2:end)];
             obj.Vit = [c, G];
             
             obj.fully_slc = [obj.fully_slc, prev.fully_slc];
@@ -394,19 +407,37 @@ classdef rotatotope_v3
             % merge lists of parameters and indeterminates
             new_k_list = unique([obj.k_list(:); prev.k_list(:)]);
             new_k_slc = [];
+            c_k = [];
+            delta_k = [];
             for i = 1:length(new_k_list)
-               k_slc_1 = obj.k_slc(find(strcmp(new_k_list{i}, obj.k_list)), :);
-               k_slc_2 = prev.k_slc(find(strcmp(new_k_list{i}, prev.k_list)), :);
-               if isempty(k_slc_1)
-                   k_slc_1 = zeros(1, size(obj.Vit(:, 2:end), 2));
-               elseif isempty(k_slc_2)
-                   k_slc_2 = zeros(1, size(prev.Vit(:, 2:end), 2));
-               end
-               new_k_slc(i, :) = [k_slc_1, k_slc_2];
+                curr_k_idx = find(strcmp(new_k_list{i}, obj.k_list));
+                prev_k_idx = find(strcmp(new_k_list{i}, prev.k_list));
+                if isempty(curr_k_idx)
+                    k_slc_1 = zeros(1, size(obj.Vit(:, 2:end), 2));
+                    k_slc_2 = prev.k_slc(prev_k_idx, :);
+                    c_k(i, 1) = prev.c_k(prev_k_idx);
+                    delta_k(i, 1) = prev.delta_k(prev_k_idx);
+                elseif isempty(prev_k_idx)
+                    k_slc_1 = obj.k_slc(curr_k_idx, :);
+                    k_slc_2 = zeros(1, size(prev.Vit(:, 2:end), 2));
+                    c_k(i, 1) = obj.c_k(curr_k_idx);
+                    delta_k(i, 1) = obj.delta_k(curr_k_idx);
+                else
+                    k_slc_1 = obj.k_slc(curr_k_idx, :);
+                    k_slc_2 = prev.k_slc(prev_k_idx, :);
+                    if (obj.c_k(curr_k_idx) ~= prev.c_k(prev_k_idx)) || (obj.delta_k(curr_k_idx) ~= prev.delta_k(prev_k_idx))
+                        error('shared parameter detected, but ranges are different.')
+                    end
+                    c_k(i, 1) = obj.c_k(curr_k_idx);
+                    delta_k(i, 1) = obj.delta_k(curr_k_idx);
+                end
+                new_k_slc(i, :) = [k_slc_1, k_slc_2];
             end
             
             obj.k_list = new_k_list;
             obj.k_slc = new_k_slc;
+            obj.c_k = c_k;
+            obj.delta_k = delta_k;
 
             % combine generators with same coefficients:
             obj = obj.combine_generators();
@@ -453,6 +484,110 @@ classdef rotatotope_v3
             G_out = G_sliced(:, ~(obj.fully_slc == 1 & all(k_slc_tmp == 0, 1)));
             
             Z = [c_out, G_out];
+        end
+
+        function obj = post_slice(obj, k_names, k_values)
+            % post_slice... basically like slice, but updates the rotatotope.
+            % need to implement so that k_values can be a range.
+            % also assuming that the gens don't have to be fully sliceable.
+
+            if size(k_values, 2) == 2
+                for i = 1:size(k_values, 1)
+                    if k_values(i, 2) < k_values(i, 1)
+                        error('If specifying a range, make sure second element is larger than first.');
+                    end
+                end
+            end
+
+            c_sliced = obj.Vit(:, 1);
+            G_sliced = obj.Vit(:, 2:end);
+            slice_coefficient = zeros(length(k_names), 1);
+            k_slc_tmp = obj.k_slc; % use this to keep track of gens that have been sliced
+            fully_slc_tmp = obj.fully_slc; % use this to remove full sliceability (lol) for gens that are sliced, but not completely.
+            for i = 1:length(k_names)
+                k_idx = find(strcmp(k_names{i}, obj.k_list));
+                if isempty(k_idx)
+                    disp([k_names{i} ' not found in k_list.']);
+                    continue;
+                end
+                for j = 1:size(k_values(i, :), 2)
+                    if abs(k_values(i, j) - obj.c_k(k_idx)) > obj.delta_k(k_idx)
+                        error('Slice point is out of bounds');
+                    end
+                    slice_coefficient(i, j) = (k_values(i, j) - obj.c_k(k_idx))/obj.delta_k(k_idx);
+                end
+                % see Alg. 1, line 6:
+                slice_gen_idxs = find(obj.k_slc(k_idx, :) ~= 0);
+
+                for j = 1:length(slice_gen_idxs)
+                    % slice gens... if indeterminate appears twice, then
+                    % square coefficient, three times => cube, etc.
+                    if size(slice_coefficient(i, :), 2) == 1 || (size(slice_coefficient(i, :), 2) == 2 && (slice_coefficient(i, 1) == slice_coefficient(i, 2)))
+                        G_sliced(:, slice_gen_idxs(j)) = G_sliced(:, slice_gen_idxs(j))*slice_coefficient(i)^obj.k_slc(k_idx, slice_gen_idxs(j));
+                        k_slc_tmp(k_idx, slice_gen_idxs(j)) = 0; % remove indeterminate coefficients associated with parameter.
+                    elseif size(slice_coefficient(i, :), 2) == 2 % slicing by range
+                        G_sliced_lb = G_sliced(:, slice_gen_idxs(j))*slice_coefficient(i, 1)^obj.k_slc(k_idx, slice_gen_idxs(j));
+                        G_sliced_ub = G_sliced(:, slice_gen_idxs(j))*slice_coefficient(i, 2)^obj.k_slc(k_idx, slice_gen_idxs(j));
+                        if ~fully_slc_tmp(slice_gen_idxs(j))
+                            G_sliced(:, slice_gen_idxs(j)) = max(G_sliced_lb, G_sliced_ub);
+                            k_slc_tmp(k_idx, slice_gen_idxs(j)) = 0; % remove indeterminate coefficients associated with parameter.
+                        else
+                            % woo. this gen is fully sliceable, so we know the value's between G_sliced_lb and G_sliced_ub
+                            k_slc_tmp_tmp = k_slc_tmp(:, slice_gen_idxs(j));
+                            k_slc_tmp_tmp(k_idx) = [];
+                            
+                            if all(k_slc_tmp_tmp == 0, 1) 
+                                % if this gen depends on no other traj. params, 
+                                % shift and scale, and
+                                % also remove "full sliceability", cuz we already sliced (just not all the way).
+                                c_sliced = c_sliced + (G_sliced_lb + G_sliced_ub)/2; % shift center 
+                                G_sliced(:, slice_gen_idxs(j)) = (G_sliced_ub - G_sliced_lb)/2; % scale generator
+                                k_slc_tmp(k_idx, slice_gen_idxs(j)) = 0; % remove indeterminate coefficients associated with parameter.
+                                fully_slc_tmp(slice_gen_idxs(j)) = 0;
+                            else
+                                % wow these if else statements suck.
+                                % this gen still depends on another param.
+                                % can't shift, but can scale gen according
+                                % to G_sliced_ub.
+                                G_sliced(:, slice_gen_idxs(j)) = G_sliced_ub;
+                                k_slc_tmp(k_idx, slice_gen_idxs(j)) = 0; % remove indeterminate coefficients associated with parameter.
+                            end
+                        end
+                    end
+                end
+            end
+            
+            % take the fully sliced generators, add to center
+            % see Alg. 1, line 11
+            fully_slcd_idxs = fully_slc_tmp == 1 & all(k_slc_tmp == 0, 1);
+            c_out = c_sliced + sum(G_sliced(:, fully_slcd_idxs), 2);
+            G_out = G_sliced(:, ~fully_slcd_idxs);
+
+            % remove fully sliced generators
+            fully_slc_tmp = fully_slc_tmp(~fully_slcd_idxs);
+            k_slc_tmp = k_slc_tmp(:, ~fully_slcd_idxs);
+
+            % remove rows associated with k_names
+            k_list_tmp = obj.k_list;
+            c_k_tmp = obj.c_k;
+            delta_k_tmp = obj.delta_k;
+            for i = 1:length(k_names)
+                k_idx = find(strcmp(k_names{i}, obj.k_list));
+                k_list_tmp(k_idx) = [];
+                k_slc_tmp(k_idx, :) = [];
+                c_k_tmp(k_idx) = [];
+                delta_k_tmp(k_idx) = [];
+            end
+            
+            % save
+            obj.Vit = [c_out, G_out];
+            obj.fully_slc = fully_slc_tmp;
+            obj.k_slc = k_slc_tmp;
+            obj.k_list = k_list_tmp;
+            obj.c_k = c_k_tmp;
+            obj.delta_k = delta_k_tmp;
+
+
         end
 
         function obj = combine_generators(obj)

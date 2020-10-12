@@ -57,7 +57,7 @@ elseif size(slice_lambda, 2) == 2
       tmp_ub = newG(:, slice_idx(i))*slice_lambda(i, 2);
 
       newc = newc + (tmp_lb + tmp_ub)/2; % shift center 
-      newG(:, slice_idx(i)) = (tmp_lb - tmp_ub)/2; % scale generator
+      newG(:, slice_idx(i)) = (tmp_ub - tmp_lb)/2; % scale generator
     end
     newG(:, ~any(newG)) = []; % remove zero columns (i.e. those caused...
     % by slicing by an interval whose lower bound equals its upper bound)
