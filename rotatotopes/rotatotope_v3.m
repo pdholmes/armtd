@@ -660,7 +660,7 @@ classdef rotatotope_v3
             switch obj.dimension
                 case 2
                     p = plotFilled(Z, [1, 2], color);
-                    p.FaceAlpha = 0.1;
+                    p.FaceAlpha = 0.3;
                 case 3
                     if isempty(p)
                         Z = reduce(Z, 'girard', 5);
@@ -709,7 +709,7 @@ classdef rotatotope_v3
             switch obj.dimension
                 case 2
                     p = plotFilled(Z, [1, 2], color);
-                    p.FaceAlpha = 0.1;
+                    p.FaceAlpha = 0.3;
                 case 3
                     if isempty(p)
                         Z = reduce(Z, 'girard', 5);
