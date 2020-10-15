@@ -634,30 +634,33 @@ classdef rotatotope_v3
             % sliceable and have the same k_slc values.
             
             % old:
-%             i = 1;
-%             while i < n_vec
-%                 if fully_slc_tmp(i) == 0
-%                     i = i+1;
-%                     continue;
-%                 end
-%                 curr_k_slc = k_slc_tmp(:, i);
-%                 duplicate_idxs = find(fully_slc_tmp((i+1):end) == 1 & all(k_slc_tmp(:, (i+1):end) == curr_k_slc, 1));
-%                 if ~isempty(duplicate_idxs)
-%                     duplicate_idxs = i + duplicate_idxs;
-%                     % found generator(s) whose coefficients match
-%                     G_tmp(:, i) = G_tmp(:, i) + sum(G_tmp(:, duplicate_idxs), 2);
-%                     G_tmp(:, duplicate_idxs) = [];
-%                     fully_slc_tmp(:, duplicate_idxs) = [];
-%                     k_slc_tmp(:, duplicate_idxs) = [];
-%                     n_vec = size(G_tmp, 2);
-%                 end
-%                 i = i+1;
-%             end
-%             obj.Vit = [c_tmp, G_tmp];
-%             obj.fully_slc = fully_slc_tmp;
-%             obj.k_slc = k_slc_tmp;
+            i = 1;
+            while i < n_vec
+                if fully_slc_tmp(i) == 0
+                    i = i+1;
+                    continue;
+                end
+                curr_k_slc = k_slc_tmp(:, i);
+                duplicate_idxs = find(fully_slc_tmp((i+1):end) == 1 & all(k_slc_tmp(:, (i+1):end) == curr_k_slc, 1));
+                if ~isempty(duplicate_idxs)
+                    duplicate_idxs = i + duplicate_idxs;
+                    % found generator(s) whose coefficients match
+                    G_tmp(:, i) = G_tmp(:, i) + sum(G_tmp(:, duplicate_idxs), 2);
+                    G_tmp(:, duplicate_idxs) = [];
+                    fully_slc_tmp(:, duplicate_idxs) = [];
+                    k_slc_tmp(:, duplicate_idxs) = [];
+                    gen_tracker_tmp(:, duplicate_idxs) = [];
+                    n_vec = size(G_tmp, 2);
+                end
+                i = i+1;
+            end
+            obj.Vit = [c_tmp, G_tmp];
+            obj.fully_slc = fully_slc_tmp;
+            obj.k_slc = k_slc_tmp;
+            obj.gen_tracker = gen_tracker_tmp;
 
             % new:
+            % i'm not sure why, but doing this without doing the above messes plotting up.
             i = 1;
             while i < n_vec
                 curr_gen_track = gen_tracker_tmp(:, i);
