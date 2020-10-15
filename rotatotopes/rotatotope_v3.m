@@ -37,6 +37,13 @@ classdef rotatotope_v3
         % keep track of intervals of trajectory parameters K
         c_k;
         delta_k;
+
+        % used for tracking gen coefficients:
+        gen_tracker = [];
+        gen_tracker_list = {};
+        gen_tracker_JRS_idxs = {};
+        gen_tracker_reduction_idxs = {};
+        n_total_gen;
     end
     
     methods
@@ -48,13 +55,17 @@ classdef rotatotope_v3
             %   specifying the JRS of predecessor joints for the current
             %   time step, and Li is a zonotope representing link (or
             %   joint) volume to be rotated.
-            if nargin == 5
+            if nargin == 8
                 % parse the input arguments:
                 obj.rotation_axes = varargin{1};
                 obj.Jit = varargin{2};
                 obj.Li = varargin{3}; % see eqn. 1, lemma 7
                 obj.k_dim = varargin{4};
                 obj.k_names = varargin{5};
+                obj.gen_tracker_list = varargin{6};
+                obj.gen_tracker_JRS_idxs = varargin{7};
+                obj.gen_tracker_reduction_idxs = varargin{8};
+                obj.n_total_gen = length(obj.gen_tracker_list);
                 if length(obj.Jit) ~= size(obj.rotation_axes, 2)
                     error('Specify as many JRS zonotopes as rotation axes');
                 end
@@ -69,7 +80,7 @@ classdef rotatotope_v3
 
         end
 
-        function obj = multiply(obj);
+        function obj = multiply(obj)
             
             % infer dimension from link volume
             obj.dimension = size(obj.Li.Z, 1);
@@ -127,17 +138,19 @@ classdef rotatotope_v3
             fully_slc_tmp = zeros(1, n_vec);
             fully_slc_tmp(1) = 1;
             k_slc_tmp = zeros(n_k, n_vec);
+            gen_tracker_tmp = zeros(obj.n_total_gen, n_vec);
             
             % apply the rotations specified in the JRS:
             for i = length(obj.Jit):-1:1
                 
                 % get generator matrix
                 G = obj.Jit{i}.Z(:, 2:end);
-                G(:, ~any(G)) = []; % delete zero columns of G
+%                 G(:, ~any(G)) = []; % delete zero columns of G
                 
                 fully_slc_new = [];
                 k_slc_new = [];
                 Vit_new = [];
+                gen_tracker_new = [];
                 
                 % multiply link volume by rotation matrix created from
                 % center of JRS; no indeterminate is added (see eqn. (13))
@@ -147,10 +160,14 @@ classdef rotatotope_v3
                 Vit_new = M*Vit_tmp;
                 fully_slc_new = [fully_slc_new, fully_slc_tmp];
                 k_slc_new = [k_slc_new, k_slc_tmp];
+                gen_tracker_new = [gen_tracker_new, gen_tracker_tmp];
                 
                 % multiply link volume by rotation matrix created from
                 % generators of JRS; indeterminate is added (see eqn. (13)).
                 % also see line 9 of Alg. 2
+                if size(G, 2) ~= length(obj.gen_tracker_JRS_idxs{i})
+                    error('number of JRS generators doesn''t match gen tracker');
+                end
                 for j = 1:size(G, 2)
                     M = obj.make_matrix(obj.rotation_axes(:, i),...
                         G(obj.trig_dim, j), false);
@@ -172,11 +189,14 @@ classdef rotatotope_v3
                         fully_slc_new = [fully_slc_new, zeros(1, n_vec)];
                         k_slc_new = [k_slc_new, k_slc_tmp];
                     end
+                    gen_tracker_tmp_2 = gen_tracker_tmp;
+                    gen_tracker_tmp_2(obj.gen_tracker_JRS_idxs{i}(j), :) = gen_tracker_tmp_2(obj.gen_tracker_JRS_idxs{i}(j), :) + 1;
+                    gen_tracker_new = [gen_tracker_new, gen_tracker_tmp_2];
                 end
                 
                 % reduce number of generators
                 % see Appendix D.D 
-                [Vit_tmp, fully_slc_tmp, k_slc_tmp] = obj.reduce(Vit_new, fully_slc_new, k_slc_new);
+                [Vit_tmp, fully_slc_tmp, k_slc_tmp, gen_tracker_tmp] = obj.reduce(Vit_new, fully_slc_new, k_slc_new, gen_tracker_new, obj.gen_tracker_reduction_idxs{i});
                 n_vec = size(Vit_tmp, 2);
             end 
             
@@ -193,6 +213,7 @@ classdef rotatotope_v3
             % disregard first column (rotatotope center has no indeterminates)
             obj.fully_slc = fully_slc_tmp(1, 2:end);
             obj.k_slc = k_slc_tmp(:, 2:end);
+            obj.gen_tracker = gen_tracker_tmp(:, 2:end);
 
             % combine generators with same coefficients:
             obj = obj.combine_generators();
@@ -224,7 +245,7 @@ classdef rotatotope_v3
             end
         end
         
-        function [Vit_tmp, fully_slc_tmp, k_slc_tmp] = reduce(obj, Vit_new, fully_slc_new, k_slc_new)
+        function [Vit_tmp, fully_slc_tmp, k_slc_tmp, gen_tracker_tmp] = reduce(obj, Vit_new, fully_slc_new, k_slc_new, gen_tracker_new, gen_tracker_reduction_idxs)
             % look at Appendix D.D for more details
             % based off of the "reduceGirard.m" function included in CORA
             
@@ -235,6 +256,7 @@ classdef rotatotope_v3
                 
                 fully_slc_new_G = fully_slc_new(:, 2:end);
                 k_slc_new_G = k_slc_new(:, 2:end);
+                gen_tracker_new_G = gen_tracker_new(:, 2:end);
 
                 %compute metric of generators
 %               h = vnorm(G,1,1)-vnorm(G,1,inf);
@@ -265,10 +287,14 @@ classdef rotatotope_v3
                 Vit_tmp = [c, G_unreduced, G_box];
                 fully_slc_tmp = [fully_slc_new(1, 1), fully_slc_new_G(1, indices((n_reduced_generators+1):end)), zeros(1, size(G_box, 2))];
                 k_slc_tmp = [k_slc_new(:, 1), k_slc_new_G(:, indices((n_reduced_generators+1):end)), zeros(size(k_slc_new, 1), size(G_box, 2))];
+                gen_tracker_reduction_tmp = zeros(size(gen_tracker_new, 1), size(G_box, 2));
+                gen_tracker_reduction_tmp(gen_tracker_reduction_idxs, :) = eye(3);
+                gen_tracker_tmp = [gen_tracker_new(:, 1), gen_tracker_new_G(:, indices((n_reduced_generators+1):end)), gen_tracker_reduction_tmp];
             else
                 Vit_tmp = Vit_new;
                 fully_slc_tmp = fully_slc_new;
                 k_slc_tmp = k_slc_new;
+                gen_tracker_tmp = gen_tracker_new;
             end
         end
         
@@ -403,6 +429,7 @@ classdef rotatotope_v3
             obj.Vit = [c, G];
             
             obj.fully_slc = [obj.fully_slc, prev.fully_slc];
+            obj.gen_tracker = [obj.gen_tracker, prev.gen_tracker];
 
             % merge lists of parameters and indeterminates
             new_k_list = unique([obj.k_list(:); prev.k_list(:)]);
@@ -504,6 +531,7 @@ classdef rotatotope_v3
             slice_coefficient = zeros(length(k_names), 1);
             k_slc_tmp = obj.k_slc; % use this to keep track of gens that have been sliced
             fully_slc_tmp = obj.fully_slc; % use this to remove full sliceability (lol) for gens that are sliced, but not completely.
+            gen_tracker_tmp = obj.gen_tracker;
             for i = 1:length(k_names)
                 k_idx = find(strcmp(k_names{i}, obj.k_list));
                 if isempty(k_idx)
@@ -566,6 +594,7 @@ classdef rotatotope_v3
             % remove fully sliced generators
             fully_slc_tmp = fully_slc_tmp(~fully_slcd_idxs);
             k_slc_tmp = k_slc_tmp(:, ~fully_slcd_idxs);
+            gen_tracker_tmp = gen_tracker_tmp(:, ~fully_slcd_idxs);
 
             % remove rows associated with k_names
             k_list_tmp = obj.k_list;
@@ -583,6 +612,7 @@ classdef rotatotope_v3
             obj.Vit = [c_out, G_out];
             obj.fully_slc = fully_slc_tmp;
             obj.k_slc = k_slc_tmp;
+            obj.gen_tracker = gen_tracker_tmp;
             obj.k_list = k_list_tmp;
             obj.c_k = c_k_tmp;
             obj.delta_k = delta_k_tmp;
@@ -596,11 +626,14 @@ classdef rotatotope_v3
             G_tmp = obj.Vit(:, 2:end);
             fully_slc_tmp = obj.fully_slc;
             k_slc_tmp = obj.k_slc;
+            gen_tracker_tmp = obj.gen_tracker;
             n_vec = size(G_tmp, 2);
             % loop through generators...
             % check for generators whose coefficients are exactly the
             % same... these can be combined into one!! must be fully
             % sliceable and have the same k_slc values.
+            
+            % old:
             i = 1;
             while i < n_vec
                 if fully_slc_tmp(i) == 0
@@ -616,6 +649,7 @@ classdef rotatotope_v3
                     G_tmp(:, duplicate_idxs) = [];
                     fully_slc_tmp(:, duplicate_idxs) = [];
                     k_slc_tmp(:, duplicate_idxs) = [];
+                    gen_tracker_tmp(:, duplicate_idxs) = [];
                     n_vec = size(G_tmp, 2);
                 end
                 i = i+1;
@@ -623,6 +657,30 @@ classdef rotatotope_v3
             obj.Vit = [c_tmp, G_tmp];
             obj.fully_slc = fully_slc_tmp;
             obj.k_slc = k_slc_tmp;
+            obj.gen_tracker = gen_tracker_tmp;
+
+            % new:
+            % i'm not sure why, but doing this without doing the above messes plotting up.
+            i = 1;
+            while i < n_vec
+                curr_gen_track = gen_tracker_tmp(:, i);
+                duplicate_idxs = find(all(gen_tracker_tmp(:, (i+1):end) == curr_gen_track, 1));
+                if ~isempty(duplicate_idxs)
+                    duplicate_idxs = i + duplicate_idxs;
+                    % found generator(s) whose coefficients match
+                    G_tmp(:, i) = G_tmp(:, i) + sum(G_tmp(:, duplicate_idxs), 2);
+                    G_tmp(:, duplicate_idxs) = [];
+                    fully_slc_tmp(:, duplicate_idxs) = [];
+                    k_slc_tmp(:, duplicate_idxs) = [];
+                    gen_tracker_tmp(:, duplicate_idxs) = [];
+                    n_vec = size(G_tmp, 2);
+                end
+                i = i+1;
+            end
+            obj.Vit = [c_tmp, G_tmp];
+            obj.fully_slc = fully_slc_tmp;
+            obj.k_slc = k_slc_tmp;
+            obj.gen_tracker = gen_tracker_tmp;
         end
         
         function [p] = plot(obj, color, buffer, p)
