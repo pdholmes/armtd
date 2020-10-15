@@ -42,6 +42,7 @@ classdef rotatotope_v3
         gen_tracker = [];
         gen_tracker_list = {};
         gen_tracker_JRS_idxs = {};
+        gen_tracker_Li_idxs = [];
         gen_tracker_reduction_idxs = {};
         n_total_gen;
     end
@@ -55,7 +56,7 @@ classdef rotatotope_v3
             %   specifying the JRS of predecessor joints for the current
             %   time step, and Li is a zonotope representing link (or
             %   joint) volume to be rotated.
-            if nargin == 8
+            if nargin == 9
                 % parse the input arguments:
                 obj.rotation_axes = varargin{1};
                 obj.Jit = varargin{2};
@@ -65,6 +66,7 @@ classdef rotatotope_v3
                 obj.gen_tracker_list = varargin{6};
                 obj.gen_tracker_JRS_idxs = varargin{7};
                 obj.gen_tracker_reduction_idxs = varargin{8};
+                obj.gen_tracker_Li_idxs = varargin{9};
                 obj.n_total_gen = length(obj.gen_tracker_list);
                 if length(obj.Jit) ~= size(obj.rotation_axes, 2)
                     error('Specify as many JRS zonotopes as rotation axes');
@@ -139,6 +141,9 @@ classdef rotatotope_v3
             fully_slc_tmp(1) = 1;
             k_slc_tmp = zeros(n_k, n_vec);
             gen_tracker_tmp = zeros(obj.n_total_gen, n_vec);
+            if n_vec > 1
+                gen_tracker_tmp(obj.gen_tracker_Li_idxs, 2:end) = eye(n_vec - 1);
+            end
             
             % apply the rotations specified in the JRS:
             for i = length(obj.Jit):-1:1
