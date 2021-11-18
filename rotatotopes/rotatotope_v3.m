@@ -265,7 +265,7 @@ classdef rotatotope_v3
 
                 %compute metric of generators
 %               h = vnorm(G,1,1)-vnorm(G,1,inf);
-                h = vnorm(G, 1, 2);
+                h = vecnorm(G, 2, 1);
                 
                 % want to add a fix here that prioritizes keeping
                 % k-sliceable generators, and re-reducing previously reduced
